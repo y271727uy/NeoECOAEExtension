@@ -6,6 +6,8 @@ import cn.dancingsnow.neoecoae.api.ECOCellModels;
 import cn.dancingsnow.neoecoae.api.ECOComputationModels;
 import cn.dancingsnow.neoecoae.api.storage.IECOStorageCellItem;
 import cn.dancingsnow.neoecoae.client.all.NEExtraModels;
+import cn.dancingsnow.neoecoae.client.gui.crafting.ECOCraftConfirmScreenIntegration;
+import cn.dancingsnow.neoecoae.client.gui.workstation.LargeIntegratedWorkingStationPatternProviderScreen;
 import cn.dancingsnow.neoecoae.client.rendering.FixedBlockEntityRenderers;
 import cn.dancingsnow.neoecoae.client.renderer.blockentity.ECOComputationDriveRenderer;
 import cn.dancingsnow.neoecoae.client.renderer.blockentity.ECODriveRenderer;
@@ -92,7 +94,7 @@ public class NeoECOAEClient {
     /** Vanilla-screen counterpart of the AE2 toolbar buttons used by the side rails. */
     private static final class JeiBookmarkButton extends Button {
         private static final net.minecraft.resources.ResourceLocation ICON_TEXTURE =
-            NeoECOAE.id("textures/gui/upload.png");
+            NeoECOAE.id("textures/gui/widget/upload.png");
 
         private JeiBookmarkButton(Component message, OnPress onPress) {
             super(0, 0, 16, 16, message, onPress, Button.DEFAULT_NARRATION);

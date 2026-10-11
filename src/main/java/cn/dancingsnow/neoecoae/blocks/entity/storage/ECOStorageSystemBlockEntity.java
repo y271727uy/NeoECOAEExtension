@@ -1,39 +1,5 @@
 package cn.dancingsnow.neoecoae.blocks.entity.storage;
 
-import cn.dancingsnow.neoecoae.all.NEMultiBlocks;
-import cn.dancingsnow.neoecoae.all.NETags;
-import cn.dancingsnow.neoecoae.api.ECOTier;
-import cn.dancingsnow.neoecoae.api.IECOTier;
-import cn.dancingsnow.neoecoae.api.storage.IECOStorageCell;
-import cn.dancingsnow.neoecoae.blocks.storage.ECOStorageSystemBlock;
-import cn.dancingsnow.neoecoae.blocks.entity.NEBlockEntity;
-import cn.dancingsnow.neoecoae.blocks.entity.ECOMachineInterfaceBlockEntity;
-import cn.dancingsnow.neoecoae.config.NEConfig;
-import cn.dancingsnow.neoecoae.gui.theme.NEStyleSheets;
-import cn.dancingsnow.neoecoae.gui.storage.StorageHostActionUI;
-import cn.dancingsnow.neoecoae.gui.storage.StorageHostUI;
-import cn.dancingsnow.neoecoae.gui.storage.StorageMegaPanelUI;
-import cn.dancingsnow.neoecoae.gui.storage.StoragePriority;
-import cn.dancingsnow.neoecoae.integration.StorageBulkMarkingIntegration;
-import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorage;
-import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageEngine;
-import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageMember;
-import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOStorageHostMode;
-import cn.dancingsnow.neoecoae.multiblock.definition.MultiBlockDefinition;
-import cn.dancingsnow.neoecoae.multiblock.cluster.NEStorageCluster;
-import cn.dancingsnow.neoecoae.multiblock.calculator.NEStorageClusterCalculator;
-import cn.dancingsnow.neoecoae.multiblock.placement.MultiBlockBuildController;
-import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.style.StylesheetManager;
-import com.lowdragmc.lowdraglib2.syncdata.annotation.DescSynced;
-import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
-import com.lowdragmc.lowdraglib2.syncdata.annotation.RPCMethod;
-import com.lowdragmc.lowdraglib2.syncdata.holder.blockentity.ISyncPersistRPCBlockEntity;
-import com.lowdragmc.lowdraglib2.syncdata.rpc.RPCSender;
-import com.lowdragmc.lowdraglib2.syncdata.storage.FieldManagedStorage;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.IStorageMounts;
@@ -42,12 +8,49 @@ import appeng.api.storage.MEStorage;
 import appeng.hooks.ticking.TickHandler;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.InternalInventoryHost;
+import cn.dancingsnow.neoecoae.all.NEMultiBlocks;
+import cn.dancingsnow.neoecoae.all.NETags;
+import cn.dancingsnow.neoecoae.api.ECOTier;
+import cn.dancingsnow.neoecoae.api.IECOTier;
+import cn.dancingsnow.neoecoae.api.storage.IECOStorageCell;
+import cn.dancingsnow.neoecoae.api.storage.IECOStoragePriorityHost;
+import cn.dancingsnow.neoecoae.blocks.entity.ECOMachineInterfaceBlockEntity;
+import cn.dancingsnow.neoecoae.blocks.entity.NEBlockEntity;
+import cn.dancingsnow.neoecoae.blocks.storage.ECOStorageSystemBlock;
+import cn.dancingsnow.neoecoae.config.NEConfig;
+import cn.dancingsnow.neoecoae.gui.common.ECOModularUI;
+import cn.dancingsnow.neoecoae.gui.storage.StorageHostActionUI;
+import cn.dancingsnow.neoecoae.gui.storage.StorageHostUI;
+import cn.dancingsnow.neoecoae.gui.storage.StorageMegaPanelUI;
+import cn.dancingsnow.neoecoae.gui.storage.StoragePriority;
+import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageEngine;
+import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageMember;
+import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOStorageHostMode;
+import cn.dancingsnow.neoecoae.integration.StorageBulkMarkingIntegration;
+import cn.dancingsnow.neoecoae.multiblock.calculator.NEStorageClusterCalculator;
+import cn.dancingsnow.neoecoae.multiblock.cluster.NEStorageCluster;
+import cn.dancingsnow.neoecoae.multiblock.definition.MultiBlockDefinition;
+import cn.dancingsnow.neoecoae.multiblock.placement.MultiBlockBuildController;
+import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
+import com.lowdragmc.lowdraglib2.gui.ui.UI;
+import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.DescSynced;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
+import com.lowdragmc.lowdraglib2.syncdata.annotation.RPCMethod;
+import com.lowdragmc.lowdraglib2.syncdata.holder.blockentity.ISyncPersistRPCBlockEntity;
+import com.lowdragmc.lowdraglib2.syncdata.rpc.RPCSender;
+import com.lowdragmc.lowdraglib2.syncdata.storage.FieldManagedStorage;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -59,16 +62,12 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
 import org.jetbrains.annotations.Nullable;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
 public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster, ECOStorageSystemBlockEntity>
-        implements ISyncPersistRPCBlockEntity, InternalInventoryHost, IStorageProvider, MultiBlockBuildController.Host {
+        implements ISyncPersistRPCBlockEntity, InternalInventoryHost, IStorageProvider, MultiBlockBuildController.Host,
+        IECOStoragePriorityHost {
     private static final Logger LOGGER = LoggerFactory.getLogger(ECOStorageSystemBlockEntity.class);
     private static final int INFINITE_COMPONENT_REQUIRED = 64;
     private static final long STORAGE_INTERFACE_TRANSFER_NANOS_PER_TICK = 2_000_000L;
@@ -102,6 +101,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     @Persisted
     private boolean infiniteExitRequested;
     private transient boolean infiniteComponentsDirty = true;
+    private transient boolean infiniteMembersDirty = true;
     @Persisted
     @DescSynced
     @Nullable
@@ -192,6 +192,8 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     @Override
     public void onReady() {
         super.onReady();
+        infiniteMembersDirty = true;
+        infiniteModeController.refreshHostAccess();
         getMainNode().setIdlePowerUsage(256 + (1 << (1 + 4 * tier.getTier())));
     }
 
@@ -201,6 +203,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
             return;
         }
         super.updateState(updateExposed);
+        infiniteModeController.refreshHostAccess();
         if (level != null) {
             BlockState state = level.getBlockState(worldPosition);
             if (state.hasProperty(ECOStorageSystemBlock.MIRRORED)) {
@@ -237,7 +240,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
         }
     }
 
-    public List<cn.dancingsnow.neoecoae.impl.storage.StorageFaults.Fault> storageFailures() {
+    public Collection<cn.dancingsnow.neoecoae.impl.storage.StorageFaults.Fault> storageFailures() {
         return stageRunner.failures();
     }
 
@@ -301,7 +304,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
                 actionUI.bulkMarkingButton()
         ));
         actionUI.addTo(root);
-        return new ModularUI(UI.of(root, List.of(StylesheetManager.INSTANCE.getStylesheetSafe(NEStyleSheets.ECO))), holder.player);
+        return ECOModularUI.create(root, holder.player);
     }
 
     public boolean hasEcoMegaUpgradeCard() {
@@ -459,6 +462,13 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
 
     private void setStoragePriority(Player player, int priority) {
         if (!canPlayerInteract(player)) return;
+        setStoragePriority(priority);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void setStoragePriority(int priority) {
+        if (level == null || level.isClientSide()) return;
         if (storagePriority == priority) {
             return;
         }
@@ -494,7 +504,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
      * Stable snapshot of the drives belonging to this storage host.
      */
     public List<ECODriveBlockEntity> getStorageDrivesForIntegration() {
-        return cluster == null ? List.of() : List.copyOf(cluster.getDrives());
+        return cluster == null ? List.of() : cluster.getDrives();
     }
 
     /**
@@ -504,6 +514,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
         if (level == null || level.isClientSide) {
             return;
         }
+        invalidateInfiniteMembers();
         invalidateStorageStatistics();
         infiniteRestore.invalidateExtractionCheck();
         setChanged();
@@ -539,8 +550,8 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
         }
         infiniteModeController.release();
         loadInfiniteMembers(tag);
-        infiniteDomainId = tag.getUUID(CONTROLLER_DOMAIN_TAG);
-        hostMode = ECOStorageHostMode.fromId(tag.getString(CONTROLLER_MODE_TAG));
+        setInfiniteDomainId(tag.getUUID(CONTROLLER_DOMAIN_TAG));
+        setStorageHostMode(ECOStorageHostMode.fromId(tag.getString(CONTROLLER_MODE_TAG)));
         setChanged();
     }
 
@@ -575,6 +586,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
      * Remember identities, not slots: moving a member must not change the required roster.
      */
     public void rememberInfiniteMembers() {
+        if (!infiniteMembersDirty) return;
         if (level == null || level.isClientSide || cluster == null || infiniteDomainId == null) return;
         for (ECODriveBlockEntity drive : cluster.getDrives()) {
             if (ECOInfiniteStorageMember.isMemberOf(drive.getCellStack(), infiniteDomainId)) {
@@ -584,6 +596,11 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
                 }
             }
         }
+        infiniteMembersDirty = false;
+    }
+
+    public void invalidateInfiniteMembers() {
+        infiniteMembersDirty = true;
     }
 
     public int getMissingInfiniteMembers() {
@@ -612,6 +629,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     }
 
     private void loadInfiniteMembers(CompoundTag tag) {
+        infiniteMembersDirty = true;
         infiniteMemberIds.clear();
         for (var value : tag.getList("infiniteMemberIds", net.minecraft.nbt.Tag.TAG_STRING)) {
             infiniteMemberIds.add(UUID.fromString(value.getAsString()));
@@ -644,6 +662,10 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
 
     public boolean canInsertIntoInfiniteDomain() {
         return infiniteModeController.canInsertIntoDomain();
+    }
+
+    void refreshInfiniteStorageAccess() {
+        infiniteModeController.refreshHostAccess();
     }
 
     MEStorage createInfiniteStorageView(ECOInfiniteStorageEngine engine) {
@@ -711,6 +733,8 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
             infiniteModeController.release();
         }
         super.updateCluster(nextCluster);
+        invalidateInfiniteMembers();
+        infiniteModeController.refreshHostAccess();
     }
 
     @Override
@@ -748,8 +772,8 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
         super.loadTag(data, registries);
         loadLegacyInfiniteComponentInventory(data, registries);
-        hostMode = ECOStorageHostMode.fromId(data.getString("infiniteHostMode"));
-        infiniteDomainId = data.hasUUID("infiniteDomainId") ? data.getUUID("infiniteDomainId") : null;
+        setStorageHostMode(ECOStorageHostMode.fromId(data.getString("infiniteHostMode")));
+        setInfiniteDomainId(data.hasUUID("infiniteDomainId") ? data.getUUID("infiniteDomainId") : null);
         loadInfiniteMembers(data);
     }
 
@@ -795,7 +819,9 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     }
 
     void setStorageHostMode(ECOStorageHostMode mode) {
+        if (hostMode == mode) return;
         hostMode = mode;
+        infiniteModeController.hostModeChanged();
     }
 
     boolean consumeInfiniteComponentsDirty() {
@@ -810,6 +836,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
 
     void clearInfiniteExitRequest() {
         infiniteExitRequested = false;
+        infiniteModeController.refreshHostAccess();
     }
 
     boolean isInfiniteExitRequested() {
@@ -818,6 +845,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
 
     void requestInfiniteExit() {
         infiniteExitRequested = true;
+        infiniteModeController.refreshHostAccess();
     }
 
     @Nullable
@@ -826,7 +854,11 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
     }
 
     void setInfiniteDomainId(@Nullable UUID domainId) {
+        if (java.util.Objects.equals(infiniteDomainId, domainId)) return;
+        infiniteModeController.release();
         infiniteDomainId = domainId;
+        invalidateInfiniteMembers();
+        infiniteModeController.hostModeChanged();
     }
 
     java.util.Set<UUID> infiniteMemberIds() {

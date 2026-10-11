@@ -66,7 +66,7 @@ import cn.dancingsnow.neoecoae.NeoECOAE;
 import cn.dancingsnow.neoecoae.blocks.entity.crafting.ECOCraftingPatternBusBlockEntity;
 import cn.dancingsnow.neoecoae.config.NEConfig;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOSingleCraftingExecutor;
-import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProvider;
+import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProviders;
 import cn.dancingsnow.neoecoae.crafting.planner.result.ECOPhaseScheduler;
 import cn.dancingsnow.neoecoae.crafting.amount.PlannerAmount;
 import cn.dancingsnow.neoecoae.crafting.amount.NEMath;
@@ -284,7 +284,8 @@ public class ECOCraftingCPULogic extends cn.dancingsnow.neoecoae.api.me.ECOCraft
                     request.job().link.getCraftingID());
         }
 
-        if (provider instanceof ECOParallelCraftingProvider parallelProvider) {
+        var parallelProvider = ECOParallelCraftingProviders.find(provider);
+        if (parallelProvider != null) {
             return parallelProvider.eco$pushPatternBatch(
                     request.pattern(), request.inputs(), 1L, request.job().link.getCraftingID());
         }
@@ -528,7 +529,7 @@ public class ECOCraftingCPULogic extends cn.dancingsnow.neoecoae.api.me.ECOCraft
         return view.getElapsedTimeTracker();
     }
 
-    /** Returns a detached, immutable progress snapshot for external displays and integrations. */
+    /** Returns a detached progress snapshot for external displays and integrations. */
     public ECOCraftingProgressView getProgressView() {
         var base = view.getProgressView();
         var parent = bigOrder.progress();
@@ -596,6 +597,11 @@ public class ECOCraftingCPULogic extends cn.dancingsnow.neoecoae.api.me.ECOCraft
         return view.getWaitingFor(template);
     }
 
+    /** Whether this output has actually used a multi-craft dispatch in the current job. */
+    public boolean isBatchedOutput(AEKey template) {
+        return view.isBatchedOutput(template);
+    }
+
     public void getAllWaitingFor(Set<AEKey> waitingFor) {
         view.getAllWaitingFor(waitingFor);
     }
@@ -611,7 +617,7 @@ public class ECOCraftingCPULogic extends cn.dancingsnow.neoecoae.api.me.ECOCraft
                 amounts.merge(output.what(), progress.remainingExact().multiply(
                     java.math.BigInteger.valueOf(output.amount())), java.math.BigInteger::add)));
             job.deferredEmitted.forEach((key, amount) -> amounts.merge(key, amount, java.math.BigInteger::add));
-            return java.util.Map.copyOf(amounts);
+            return amounts;
         }
         return bigOrder.exactPendingPreview();
     }

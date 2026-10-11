@@ -139,7 +139,9 @@ dependencies {
     compileOnly("org.appliedenergistics:guideme:21.1.1:api")
     runtimeOnly("org.appliedenergistics:guideme:21.1.1")
 
-    implementation("org.appliedenergistics:appliedenergistics2:19.2.17")
+    implementation("org.appliedenergistics:appliedenergistics2:${ae2_version}") {
+        version { strictly(ae2_version) }
+    }
 
     // Optional alloy-furnace scaled dispatch API; not bundled or installed in the dev runtime.
     // Requires 2.3.7.2+ for AlloyFurnaceBigIntegerTarget public API (introduced 2026-09-18)
@@ -148,7 +150,26 @@ dependencies {
     // Optional transfer fast path. Never place this on the default runtime classpath.
 
     // Optional OmniSequence v1 batch API. Compile against the upstream classes without installing the mod at runtime.
-    compileOnly("curse.maven:omnisequence-transfinite-1624558:8622739") { transitive = false }
+    compileOnly("curse.maven:omnisequence-transfinite-1624558:8991983") { transitive = false }
+
+    // Pattern-disk API: AE2 Pattern Disk publishes PatternDiskApi for integrations whose machines hold pattern
+    // disks. The integration still does not require the mod - the guard in PatternDiskIntegration stands it down
+    // when the mod is absent, and a machine that never holds a disk behaves as it did before. Declared as
+    // implementation rather than compileOnly so the dev runtime loads it and the integration can be exercised.
+    //
+    // 0.7.1 is the first release this integration accepts: it added maxPatterns (api 9), which the integration
+    // probes for as its version floor, and the coordinates below are that release. Anything older stands the
+    // integration down with one log line rather than misbehaving.
+    //
+    // The probe reads the api by reflection, so the version compiled against and the version installed are
+    // independent: a player running a newer AE2 Pattern Disk than this build is fine, and one running an older
+    // release gets the stand-down rather than a broken machine.
+    //
+    // Sourced from CurseForge rather than Modrinth: this project does not resolve through Modrinth's maven
+    // at all - both the version number and the version id answer 404 there while the file itself downloads
+    // from its CDN - and CI hit exactly that. The file id is the 0.7.1 upload of project 1698612.
+    implementation("curse.maven:ae2-pattern-disk-1698612:9009050") { transitive = false }
+    runtimeOnly("maven.modrinth:applied-energistics-2-wireless-terminals:19.5.1") { transitive = false }
 
     // Optional integration target. 4.11.0 is the verified 1.21.1 build (AE2 >= 19.2.15).
     compileOnly("curse.maven:mega-cells-622112:7952621") { transitive = false }
@@ -156,13 +177,17 @@ dependencies {
 
     implementation("curse.maven:omni-cells-1359517:8050965")
 
+    // Optional integration APIs are available for compilation and tests, but not runClient.
     def localAe2LtJar = providers.gradleProperty("ae2lt_local_jar").orNull
     if (localAe2LtJar) {
-        implementation(files(localAe2LtJar))
+        compileOnly(files(localAe2LtJar))
+        testImplementation(files(localAe2LtJar))
     } else {
-        implementation("curse.maven:ae2-lightning-tech-1527395:8823559") { transitive = false }
+        compileOnly("curse.maven:ae2-lightning-tech-1527395:8823559") { transitive = false }
+        testImplementation("curse.maven:ae2-lightning-tech-1527395:8823559") { transitive = false }
     }
-    implementation("curse.maven:thunderbolt-core-1631756:8844639") { transitive = false }
+    compileOnly("curse.maven:thunderbolt-core-1631756:8844639") { transitive = false }
+    testImplementation("curse.maven:thunderbolt-core-1631756:8844639") { transitive = false }
     // JDT Time Accelerators is optional and requires the separate
     // Just Dire Things mod, so it is not included in the default dev runtime.
     implementation("com.lowdragmc.ldlib2:ldlib2-neoforge-${minecraft_version}:${ldlib2_version}:all") { transitive = false }
@@ -210,6 +235,9 @@ dependencies {
 tasks.named('test', Test) {
     useJUnitPlatform()
     maxHeapSize = '2G'
+    systemProperty 'storage.performance', providers.systemProperty('storage.performance').getOrElse('false')
+    systemProperty 'storage.performance.label', providers.systemProperty('storage.performance.label').getOrElse('current')
+    systemProperty 'storage.performance.extended', providers.systemProperty('storage.performance.extended').getOrElse('false')
 }
 
 neoForge {

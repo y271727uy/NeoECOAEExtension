@@ -1,71 +1,55 @@
 package cn.dancingsnow.neoecoae.blocks.entity;
 
 import appeng.api.config.Actionable;
-import cn.dancingsnow.neoecoae.gui.theme.ECOIcon;
-import cn.dancingsnow.neoecoae.all.NEMultiBlocks;
-import cn.dancingsnow.neoecoae.gui.theme.AETextures;
-import cn.dancingsnow.neoecoae.multiblock.placement.MultiBlockPlacementService;
-import com.lowdragmc.lowdraglib2.gui.ui.data.FillDirection;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.FluidSlot;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.BindableValue;
-import com.lowdragmc.lowdraglib2.gui.ui.event.HoverTooltips;
-import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
 import appeng.api.config.PowerMultiplier;
 import appeng.api.crafting.IPatternDetails;
-import appeng.api.inventories.InternalInventory;
 import appeng.api.networking.IGrid;
-import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridMultiblock;
+import appeng.api.networking.IGridNode;
 import appeng.api.networking.crafting.ICraftingProvider;
+import appeng.api.networking.energy.IEnergyService;
+import appeng.api.networking.energy.IEnergySource;
 import appeng.api.networking.security.IActionSource;
+import appeng.api.networking.ticking.IGridTickable;
+import appeng.api.networking.ticking.TickRateModulation;
+import appeng.api.networking.ticking.TickingRequest;
+import appeng.api.orientation.BlockOrientation;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.MEStorage;
-import appeng.api.networking.energy.IEnergySource;
-import appeng.api.networking.energy.IEnergyService;
-import appeng.api.networking.ticking.IGridTickable;
-import appeng.api.networking.ticking.TickRateModulation;
-import appeng.api.networking.ticking.TickingRequest;
-import appeng.api.orientation.BlockOrientation;
 import appeng.me.cluster.IAEMultiBlock;
 import appeng.util.inv.AppEngInternalInventory;
-import cn.dancingsnow.neoecoae.NeoECOAE;
 import cn.dancingsnow.neoecoae.all.NEBlocks;
+import cn.dancingsnow.neoecoae.all.NEMultiBlocks;
 import cn.dancingsnow.neoecoae.all.NERecipeTypes;
-import cn.dancingsnow.neoecoae.multiblock.cluster.NEIntegratedWorkingStationCluster;
-import cn.dancingsnow.neoecoae.multiblock.calculator.NEIntegratedWorkingStationControllerCalculator;
 import cn.dancingsnow.neoecoae.api.me.output.ECOCraftingOutputRouter;
-import cn.dancingsnow.neoecoae.crafting.execution.worker.ECOCraftingJobLifecycle;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOBatchCraftingHelper;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOFastPathStacks;
-import cn.dancingsnow.neoecoae.gui.common.GuideButton;
-import cn.dancingsnow.neoecoae.gui.common.HostSideButtonBar;
-import cn.dancingsnow.neoecoae.recipe.IntegratedWorkingStationRecipe;
+import cn.dancingsnow.neoecoae.crafting.execution.worker.ECOCraftingJobLifecycle;
+import cn.dancingsnow.neoecoae.gui.theme.NETextures;
+import cn.dancingsnow.neoecoae.gui.workstation.LargeWorkstationUI;
+import cn.dancingsnow.neoecoae.multiblock.calculator.NEIntegratedWorkingStationControllerCalculator;
+import cn.dancingsnow.neoecoae.multiblock.cluster.NEIntegratedWorkingStationCluster;
+import cn.dancingsnow.neoecoae.multiblock.placement.MultiBlockPlacementService;
 import cn.dancingsnow.neoecoae.recipe.CoolingRecipe;
+import cn.dancingsnow.neoecoae.recipe.IntegratedWorkingStationRecipe;
 import cn.dancingsnow.neoecoae.recipe.LargeWorkstationRecipes;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
-import com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.DataBindingBuilder;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.texture.SpriteTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
-import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
-import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.ItemSlot;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
-import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
-import com.lowdragmc.lowdraglib2.gui.ui.style.StylesheetManager;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.DescSynced;
 import com.lowdragmc.lowdraglib2.syncdata.annotation.Persisted;
 import com.lowdragmc.lowdraglib2.syncdata.holder.blockentity.ISyncPersistRPCBlockEntity;
-import dev.vfyjxf.taffy.style.TaffyPosition;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -74,6 +58,9 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.Level;
@@ -86,14 +73,6 @@ import net.neoforged.neoforge.fluids.capability.templates.FluidTank;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.ArrayDeque;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
-import java.util.Deque;
-import java.util.UUID;
 
 /** Controller for the fixed 3x2x2 large integrated working station. */
 public class ECOLargeIntegratedWorkingStationBlockEntity
@@ -108,9 +87,6 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
     private static final long MAX_PENDING_OUTPUT_STACKS = 100_000L;
     private static final long MAX_SAVE_STACKS = 50_000L;
     private static final int MAX_POWER_STORAGE = 16_000_000;
-    private static final IGuiTexture UI_BACKGROUND = SpriteTexture.of(
-        NeoECOAE.id("textures/gui/large_integrated_working_station.png")
-    ).setSprite(0, 0, 176, 180);
 
     private final NEIntegratedWorkingStationControllerCalculator calculator;
     private final LargeWorkstationCoolingOutput coolingOutput = new LargeWorkstationCoolingOutput();
@@ -128,6 +104,8 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
     private boolean activeCooling;
     @DescSynced
     private int pauseReasonId;
+    @DescSynced
+    private int outputBlockedReasonId;
     private double pendingPowerRefund;
 
     public ECOLargeIntegratedWorkingStationBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
@@ -385,7 +363,17 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
     public Component getPauseReasonText() {
         PauseReason[] reasons = PauseReason.values();
         int index = Math.max(0, Math.min(pauseReasonId, reasons.length - 1));
-        return Component.translatable(reasons[index].translationKey);
+        PauseReason reason = reasons[index];
+        var result = Component.translatable(reason.translationKey);
+        if (reason == PauseReason.OUTPUT_BLOCKED || reason == PauseReason.INPUT_RETURN_BLOCKED) {
+            OutputBlockedReason[] details = OutputBlockedReason.values();
+            int detailIndex = Math.max(0, Math.min(outputBlockedReasonId, details.length - 1));
+            OutputBlockedReason detail = details[detailIndex];
+            if (detail != OutputBlockedReason.NONE) {
+                result.append(Component.translatable(detail.translationKey));
+            }
+        }
+        return result;
     }
 
     /** Returns the concrete materials accepted for the batch currently at the head of the work queue. */
@@ -394,14 +382,35 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         if (batch == null || batch.progress >= MAX_PROCESSING_STEPS) {
             return List.of();
         }
-        return List.copyOf(counterEntries(batch.inputTotal));
+        return counterEntries(batch.inputTotal);
     }
 
     private void setPauseReason(PauseReason reason) {
+        setPauseReason(reason, reason == PauseReason.OUTPUT_BLOCKED || reason == PauseReason.INPUT_RETURN_BLOCKED
+            ? OutputBlockedReason.UNKNOWN : OutputBlockedReason.NONE);
+    }
+
+    private void setPauseReason(PauseReason reason, OutputBlockedReason detail) {
+        boolean changed = false;
         if (pauseReasonId != reason.ordinal()) {
             pauseReasonId = reason.ordinal();
+            changed = true;
+        }
+        if (outputBlockedReasonId != detail.ordinal()) {
+            outputBlockedReasonId = detail.ordinal();
+            changed = true;
+        }
+        if (changed) {
             markForUpdate();
         }
+    }
+
+    private void setOutputBlockedReason(OutputBlockedReason detail) {
+        setPauseReason(PauseReason.OUTPUT_BLOCKED, detail);
+    }
+
+    private void setInputReturnBlockedReason() {
+        setPauseReason(PauseReason.INPUT_RETURN_BLOCKED, OutputBlockedReason.INPUT_RETURN);
     }
 
     public IFluidHandler getFluidCombined() {
@@ -444,11 +453,10 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         if (batch.recipe != null || level == null) return batch.recipe;
 
         if (batch.recipeId != null) {
-            for (var adapted : LargeWorkstationRecipes.getAll(level)) {
-                if (adapted.id().equals(batch.recipeId)) {
-                    batch.recipe = adapted.display();
-                    return batch.recipe;
-                }
+            var adapted = LargeWorkstationRecipes.getById(level, batch.recipeId);
+            if (adapted != null) {
+                batch.recipe = adapted.display();
+                return batch.recipe;
             }
             var holder = level.getRecipeManager().byKey(batch.recipeId).orElse(null);
             if (holder != null && holder.value() instanceof IntegratedWorkingStationRecipe recipe) {
@@ -668,11 +676,14 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
             boolean cleared = abandonedWithoutOutput
                 ? recoverCounterToNetwork(batch.inputTotal)
                 : deliverBatchOutputs(batch);
+            if (!cleared && abandonedWithoutOutput) {
+                setInputReturnBlockedReason();
+            }
             if (cleared) {
                 if (abandonedWithoutOutput) notifyPatternAborted(batch.unlockStack);
                 removeFirstBatch(batch);
             }
-            setPauseReason(cleared ? PauseReason.NONE : PauseReason.OUTPUT_BLOCKED);
+            if (cleared) setPauseReason(PauseReason.NONE);
             setChanged();
             return cleared ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
         }
@@ -680,7 +691,7 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         if (!isCounterEmpty(batch.pendingOutput)) {
             boolean delivered = deliverBatchOutputs(batch);
             if (delivered) removeFirstBatch(batch);
-            setPauseReason(delivered ? PauseReason.NONE : PauseReason.OUTPUT_BLOCKED);
+            if (delivered) setPauseReason(PauseReason.NONE);
             setChanged();
             return delivered ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
         }
@@ -698,7 +709,7 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
             batch.pendingOutput.addAll(batch.outputTotal);
             boolean delivered = deliverBatchOutputs(batch);
             if (delivered) removeFirstBatch(batch);
-            setPauseReason(delivered ? PauseReason.NONE : PauseReason.OUTPUT_BLOCKED);
+            if (delivered) setPauseReason(PauseReason.NONE);
             setChanged();
             return TickRateModulation.URGENT;
         }
@@ -876,7 +887,10 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
     private boolean deliverBatchOutputs(PendingBatch batch) {
         if (isCounterEmpty(batch.pendingOutput)) return true;
         IGrid grid = getMainNode().getGrid();
-        if (grid == null) return false;
+        if (grid == null) {
+            setOutputBlockedReason(OutputBlockedReason.NETWORK_UNAVAILABLE);
+            return false;
+        }
 
         MEStorage storage = grid.getStorageService().getInventory();
         Object craftingService = grid.getCraftingService();
@@ -884,7 +898,10 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
             && ECOCraftingJobLifecycle.isTerminated(level, batch.craftingJobId);
         ECOCraftingOutputRouter ownerRouter = null;
         if (batch.craftingJobId != null && !terminal) {
-            if (!(craftingService instanceof ECOCraftingOutputRouter router)) return false;
+            if (!(craftingService instanceof ECOCraftingOutputRouter router)) {
+                setOutputBlockedReason(OutputBlockedReason.CPU_ROUTE);
+                return false;
+            }
             ownerRouter = router;
         }
 
@@ -899,7 +916,11 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
                     "Invalid large workstation output insertion amount: " + inserted + " for " + requested);
             }
             if (inserted > 0L) batch.pendingOutput.remove(stack.what(), inserted);
-            if (inserted < requested) return false;
+            if (inserted < requested) {
+                setOutputBlockedReason(ownerRouter == null
+                    ? OutputBlockedReason.NETWORK_INSERT : OutputBlockedReason.CPU_INSERT);
+                return false;
+            }
         }
         boolean complete = isCounterEmpty(batch.pendingOutput);
         if (complete) notifyPatternResult(batch.unlockStack);
@@ -955,7 +976,7 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         LargeWorkstationOverclock profile = getCurrentBatchProfile();
         if (!profile.acceptsCraftCount(craftCount)) return null;
         // Inputs delivered by AE2 are retained in the workstation's unbounded ledger while
-        // the batch runs.  Recipe lookup is performed against one craft's actual input set,
+        // the batch runs. Recipe lookup is performed against one encoded pattern's actual input set,
         // while the owned ledger keeps the complete scaled amount for cancellation/refund.
         KeyCounter totalInputs = collectInputTotals(pattern, holders);
         if (totalInputs == null || isCounterEmpty(totalInputs)) return null;
@@ -964,25 +985,38 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
 
         KeyCounter outputPerCraft = collectPatternOutputs(pattern);
         if (outputPerCraft == null) return null;
-        var adapted = LargeWorkstationRecipes.find(level, perCraftInputs, outputPerCraft);
-        if (adapted == null) return null;
+        var match = LargeWorkstationRecipes.findScaled(level, perCraftInputs, outputPerCraft);
+        if (match == null) return null;
+        var adapted = match.recipe();
 
         KeyCounter remainderTotal = collectRemainderTotals(pattern, holders);
         if (remainderTotal == null) return null;
-        KeyCounter outputTotal = scaleCounter(outputPerCraft, craftCount);
+        long energyPerCraft;
+        KeyCounter outputTotal;
+        KeyCounter missingExtras = new KeyCounter();
+        try {
+            // craftCount counts encoded pattern executions. Each multiplied pattern must pay for
+            // all of its base recipe operations, including extras absent from the encoded inputs.
+            energyPerCraft = Math.multiplyExact(adapted.energy(), match.multiplier());
+            outputTotal = scaleCounter(outputPerCraft, craftCount);
+            for (var extra : adapted.extraInputs()) {
+                if (perCraftInputs.get(extra.what()) == 0) {
+                    long perPattern = Math.multiplyExact(extra.amount(), match.multiplier());
+                    missingExtras.add(extra.what(), Math.multiplyExact(perPattern, craftCount));
+                }
+            }
+        } catch (ArithmeticException overflow) {
+            return null;
+        }
         outputTotal.addAll(remainderTotal);
         if (isCounterEmpty(outputTotal)) return null;
         PendingBatch batch = new PendingBatch(
-            craftCount, adapted.energy(), profile.coolingTier(), profile.energyMultiplier(), totalInputs, outputTotal,
+            craftCount, energyPerCraft, profile.coolingTier(), profile.energyMultiplier(), totalInputs, outputTotal,
             craftingJobId, adapted.id(), adapted.display(), unlockStack, level.getGameTime());
         // Compatibility-only inputs (for example AE2LT lightning) are not represented by
         // ordinary AE2 pattern holders.  Keep them in the pending ledger so the actual
         // adapted recipe still charges them from the ME network before processing.
-        for (var extra : adapted.extraInputs()) {
-            if (perCraftInputs.get(extra.what()) == 0) {
-                batch.missingExtras.add(extra.what(), Math.multiplyExact(extra.amount(), craftCount));
-            }
-        }
+        batch.missingExtras.addAll(missingExtras);
         return batch;
     }
 
@@ -1135,77 +1169,19 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
     }
 
     public ModularUI createUI(BlockUIMenuType.BlockUIHolder holder) {
-        if (!getBlockState().getValue(cn.dancingsnow.neoecoae.blocks.ECOIntegratedWorkingStation.FORMED)) {
+        // The open-menu state can arrive before the client world's block update.
+        BlockState state = holder != null && holder.blockState != null ? holder.blockState : getBlockState();
+        if (!state.getValue(cn.dancingsnow.neoecoae.blocks.ECOIntegratedWorkingStation.FORMED)) {
             return super.createUI(holder);
         }
-        UIElement root = new UIElement().layout(layout -> layout.width(176).height(180))
-            .style(style -> style.backgroundTexture(UI_BACKGROUND));
-
-        TextElement title = staticLabel("block.neoecoae.large_integrated_working_station", 8, 4, 106, 10);
-        title.textStyle(style -> style.fontSize(8));
-        root.addChild(title);
-        root.addChild(staticLabel("container.inventory", 8, 85, 160, 9));
-
-        // Keep all status text inside the 96x54 inset in the background texture.
-        root.addChild(syncedLabel(this::getEnergyText, 42, 25, 92, 8));
-        root.addChild(syncedLabel(this::getTaskText, 42, 35, 92, 8));
-        root.addChild(syncedLabel(this::getCoolingTierText, 42, 45, 92, 8));
-        root.addChild(syncedLabel(this::getBatchSettingsText, 42, 55, 92, 8));
-        root.addChild(syncedLabel(this::getPauseReasonText, 42, 65, 92, 8));
-
-        // Resolve through the controller on every sync, so a rebuilt cluster cannot leave
-        // an open screen displaying a detached hatch's tank.
-        IFluidHandler fluids = getFluidCombined();
-        root.addChild(fluidGauge(fluids, 0, 8));
-        root.addChild(fluidGauge(fluids, 1, 150));
-
-        for (int row = 0; row < 4; row++) {
-            for (int col = 0; col < 9; col++) {
-                int index = row == 3 ? col : 9 + row * 9 + col;
-                int x = 7 + col * 18;
-                int y = row == 3 ? 153 : 95 + row * 18;
-                root.addChild(new ItemSlot(new net.minecraft.world.inventory.Slot(holder.player.getInventory(), index, 0, 0))
-                    .style(style -> style.backgroundTexture(IGuiTexture.EMPTY))
-                    .layout(layout -> layout.positionType(TaffyPosition.ABSOLUTE).left(x).top(y).width(18).height(18)));
-            }
-        }
-        root.addChild(HostSideButtonBar.left(
-            GuideButton.create(holder.player, "neoecoae:neoecoae_intro/large_integrated_working_station.md"),
-            settingButton(ECOIcon.ARROW_LEFT, this::returnStoredInputs, () -> Component.translatable(
-                "gui.neoecoae.large_integrated_working_station.return_inputs")),
-            settingButton(ECOIcon.POWER_UNIT_AE, this::toggleOverclocked, () -> Component.translatable(
-                overclocked ? "gui.neoecoae.crafting.overclock.on" : "gui.neoecoae.crafting.overclock.off")),
-            settingButton(ECOIcon.TYPE_FILTER_ALL, this::toggleActiveCooling, () -> Component.translatable(
-                activeCooling ? "gui.neoecoae.crafting.active_cooling.on" : "gui.neoecoae.crafting.active_cooling.off"))
-        ));
-        return new ModularUI(UI.of(root, List.of(StylesheetManager.INSTANCE.getStylesheetSafe(
-            cn.dancingsnow.neoecoae.gui.theme.NEStyleSheets.ECO))), holder.player);
-    }
-
-    private static UIElement fluidGauge(IFluidHandler fluids, int tank, int left) {
-        return new FluidSlot().bind(fluids, tank)
-            .setAllowClickFilled(false)
-            .setAllowClickDrained(false)
-            .slotStyle(style -> style.fillDirection(FillDirection.DOWN_TO_UP))
-            .style(style -> style.backgroundTexture(IGuiTexture.EMPTY))
-            .layout(layout -> layout.positionType(TaffyPosition.ABSOLUTE)
-                .left(left).top(20).width(18).height(60));
-    }
-
-    private static Button settingButton(ECOIcon icon, Runnable action, java.util.function.Supplier<Component> tooltip) {
-        Button button = HostSideButtonBar.createButton().noText()
-            .addPostIcon(AETextures.icon(icon)).setOnServerClick(event -> action.run());
-        BindableValue<Component> text = new BindableValue<>(tooltip.get());
-        text.bind(DataBindingBuilder.componentS2C(tooltip).build());
-        text.setDisplay(false);
-        button.addChild(text);
-        button.addEventListener(UIEvents.HOVER_TOOLTIPS, event ->
-            event.hoverTooltips = HoverTooltips.empty().append(text.getValue()));
-        return button;
+        return LargeWorkstationUI.create(new LargeWorkstationUI.Config(
+            getFluidCombined(), this::getEnergyText, this::getTaskText, this::getCoolingTierText,
+            this::getBatchSettingsText, this::getPauseReasonText, () -> overclocked, () -> activeCooling,
+            this::returnStoredInputs, this::toggleOverclocked, this::toggleActiveCooling), holder.player);
     }
 
     public Button createAutoBuildButton(Player player) {
-        return settingButton(ECOIcon.CRAFT_HAMMER, () -> autoBuild(player),
+        return LargeWorkstationUI.settingButton(NETextures.MULTIBLOCK, () -> autoBuild(player),
             () -> Component.translatable("gui.neoecoae.large_integrated_working_station.auto_build"));
     }
 
@@ -1216,7 +1192,7 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         for (PendingBatch batch : batches) {
             if (batch.progress >= MAX_PROCESSING_STEPS) continue;
             if (!recoverCounterToNetwork(batch.inputTotal)) {
-                setPauseReason(PauseReason.OUTPUT_BLOCKED);
+                setInputReturnBlockedReason();
                 setChanged();
                 return;
             }
@@ -1252,45 +1228,6 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         if (!MultiBlockPlacementService.buildInstant(serverLevel, plan, serverPlayer)) return;
         rebuildMultiblock();
         if (formed) BlockUIMenuType.openUI(serverPlayer, worldPosition);
-    }
-
-    private static TextElement staticLabel(String translationKey, int left, int top, int width, int height) {
-        TextElement label = new TextElement()
-            .setText(translationKey, true)
-            .textStyle(style -> style
-                .fontSize(6)
-                .adaptiveWidth(false)
-                .textWrap(TextWrap.HOVER_ROLL)
-                .adaptiveHeight(false)
-                .textShadow(false)
-                .textColor(0x403E53));
-        label.layout(layout -> layout
-            .positionType(TaffyPosition.ABSOLUTE)
-            .left(left)
-            .top(top)
-            .width(width)
-            .height(height));
-        return label;
-    }
-
-    private static Label syncedLabel(java.util.function.Supplier<Component> supplier, int left, int top, int width, int height) {
-        return syncedLabel(supplier, left, top, width, height, TextWrap.HOVER_ROLL);
-    }
-
-    private static Label syncedLabel(
-        java.util.function.Supplier<Component> supplier,
-        int left,
-        int top,
-        int width,
-        int height,
-        TextWrap textWrap
-    ) {
-        Label label = new Label();
-        label.setText(supplier.get());
-        label.bind(DataBindingBuilder.componentS2C(supplier).build());
-        label.textStyle(style -> style.fontSize(6).adaptiveWidth(false).textWrap(textWrap).adaptiveHeight(false).textShadow(false).textColor(0x403E53));
-        label.layout(layout -> layout.positionType(TaffyPosition.ABSOLUTE).left(left).top(top).width(width).height(height));
-        return label;
     }
 
     @Override
@@ -1329,11 +1266,28 @@ public class ECOLargeIntegratedWorkingStationBlockEntity
         COOLANT_OUTPUT_BLOCKED("gui.neoecoae.large_integrated_working_station.pause.coolant_output_blocked"),
         POWER_MISSING("gui.neoecoae.large_integrated_working_station.pause.power_missing"),
         OUTPUT_BLOCKED("gui.neoecoae.large_integrated_working_station.pause.output_blocked"),
+        INPUT_RETURN_BLOCKED("gui.neoecoae.large_integrated_working_station.pause.input_return_blocked"),
         LIGHTNING_MISSING("gui.neoecoae.large_integrated_working_station.pause.lightning_missing");
 
         private final String translationKey;
 
         PauseReason(String translationKey) {
+            this.translationKey = translationKey;
+        }
+    }
+
+    private enum OutputBlockedReason {
+        NONE(null),
+        UNKNOWN("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.unknown"),
+        CPU_ROUTE("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.cpu_route"),
+        CPU_INSERT("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.cpu_insert"),
+        NETWORK_UNAVAILABLE("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.network_unavailable"),
+        NETWORK_INSERT("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.network_insert"),
+        INPUT_RETURN("gui.neoecoae.large_integrated_working_station.pause.output_blocked.detail.input_return");
+
+        private final String translationKey;
+
+        OutputBlockedReason(String translationKey) {
             this.translationKey = translationKey;
         }
     }

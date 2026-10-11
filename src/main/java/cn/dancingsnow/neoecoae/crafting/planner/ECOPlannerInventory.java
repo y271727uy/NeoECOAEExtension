@@ -6,8 +6,10 @@ import appeng.api.stacks.AEKey;
 import appeng.api.storage.cells.StorageCell;
 import appeng.items.storage.CreativeCellItem;
 import cn.dancingsnow.neoecoae.blocks.entity.storage.ECODriveBlockEntity;
+import cn.dancingsnow.neoecoae.compat.storage.ECOOptionalUnboundedCells;
 import cn.dancingsnow.neoecoae.crafting.planner.solve.PlannerInventorySnapshot;
 import cn.dancingsnow.neoecoae.crafting.display.terminal.ExactAmountSource;
+import cn.dancingsnow.neoecoae.grid.NEMachineLookup;
 import cn.dancingsnow.neoecoae.impl.storage.ECOCreativeCell;
 
 import java.util.HashSet;
@@ -36,11 +38,12 @@ public final class ECOPlannerInventory {
             if (cell instanceof ECOCreativeCell creative) unbounded.addAll(creative.configuredKeys());
             if (cell instanceof ExactAmountSource source) markUnbounded(source, unbounded);
         }
-        for (IChestOrDrive host : grid.getMachines(IChestOrDrive.class)) {
+        for (IChestOrDrive host : NEMachineLookup.getMachines(grid, IChestOrDrive.class)) {
             if (!host.isPowered()) continue;
             for (int slot = 0; slot < host.getCellCount(); slot++) {
                 StorageCell cell = host.getOriginalCellInventory(slot);
                 if (cell instanceof ExactAmountSource source) markUnbounded(source, unbounded);
+                ECOOptionalUnboundedCells.collect(cell, unbounded);
 
                 if (cell != null && host.getCellItem(slot) instanceof CreativeCellItem) {
                     // Native ME drives expose AE2 creative cells as StorageCell and report only
@@ -50,7 +53,7 @@ public final class ECOPlannerInventory {
                 }
             }
         }
-        return Set.copyOf(unbounded);
+        return unbounded;
     }
 
     private static void markUnbounded(ExactAmountSource source, Set<AEKey> target) {

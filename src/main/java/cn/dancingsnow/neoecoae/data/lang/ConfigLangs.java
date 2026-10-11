@@ -30,6 +30,13 @@ public class ConfigLangs {
             "Post a vanilla crafting event (ItemCraftedEvent) when the Crafting System finishes a recipe.\n" +
                 "May introduce extra event/listener overhead; can be more noticeable with mods like Balm installed."
         );
+        provider.add("neoecoae.configuration.largeWorkstationCompatRecipesEnabled", "Enable Large Workstation Recipe Compatibility");
+        provider.add(
+            "neoecoae.configuration.largeWorkstationCompatRecipesEnabled.tooltip",
+            "Allow the large integrated workstation to process supported mods' recipes. Disabled by default.\n" +
+                "When disabled, only native integrated workstation recipes are available.\n" +
+                "Reopen the world or restart the server after changing this option to refresh recipe viewers."
+        );
         provider.add("neoecoae.configuration.craftingPatternBusPages", "Crafting Pattern Bus Pages");
         provider.add(
             "neoecoae.configuration.craftingPatternBusPages.tooltip",
@@ -40,15 +47,8 @@ public class ConfigLangs {
         provider.add("neoecoae.configuration.fastPath", "Fast Path");
         provider.add(
             "neoecoae.configuration.fastPath.tooltip",
-            "ECO AE2 fast path cache and batch crafting options.\n" +
-                "Disable or lower these values if a modpack has recipe compatibility issues."
-        );
-        provider.add("neoecoae.configuration.ecoAe2FastPathEnabled", "Enable ECO AE2 Fast Path");
-        provider.add(
-            "neoecoae.configuration.ecoAe2FastPathEnabled.tooltip",
-            "Enable ECO AE2 fast path batch crafting cache.\n" +
-                "This can greatly reduce repeated pattern execution cost. If recipe compatibility issues occur in a modpack, disable this option to fall back to the slow path.\n" +
-                "Fast Path is automatically disabled when Post Crafting Event is enabled to preserve event semantics."
+            "ECO AE2 fast path cache and batch crafting limits.\n" +
+                "Fast Path is enabled by default and falls back to single-craft execution when Post Crafting Event is enabled."
         );
 
         provider.add("neoecoae.configuration.ecoCpuPushTickLimit", "CPU Push Tick Limit");

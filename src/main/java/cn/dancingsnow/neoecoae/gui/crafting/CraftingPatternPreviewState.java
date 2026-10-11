@@ -4,7 +4,11 @@ import appeng.api.crafting.PatternDetailsHelper;
 import appeng.api.stacks.AEItemKey;
 import cn.dancingsnow.neoecoae.blocks.entity.ECOMachineInterfaceBlockEntity;
 import cn.dancingsnow.neoecoae.gui.widget.PatternItemSlot;
+import cn.dancingsnow.neoecoae.integration.ae2pattern.PatternDiskSupport;
+import cn.dancingsnow.neoecoae.util.PatternSearchKeywords;
 import com.lowdragmc.lowdraglib2.gui.slot.LocalSlot;
+import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
+import com.lowdragmc.lowdraglib2.gui.holder.ModularUIContainerMenu;
 import com.lowdragmc.lowdraglib2.gui.ui.event.HoverTooltips;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -13,7 +17,6 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
@@ -41,16 +44,16 @@ final class CraftingPatternPreviewState {
     private final Int2ObjectOpenHashMap<PatternPreviewEntry> pendingChanges = new Int2ObjectOpenHashMap<>();
     private boolean pendingFull;
     private int pendingRevision;
+    private long pendingEpoch;
     private int revision = -1;
+    private long epoch = -1L;
     private int menuId = -1;
-    private String search = "";
-    private boolean showSubstitution = true;
-    private boolean showFluidSubstitution = true;
-    private boolean showEmptyRows = true;
+    private int requestedMenuId = -1;
+    private String inputSearch = "", outputSearch = "";
     private int scrollRow;
     private int receivedEntries;
-    private final Map<AEItemKey, String> localKeywords = new LinkedHashMap<>(256, 0.75F, true) {
-        @Override protected boolean removeEldestEntry(Map.Entry<AEItemKey, String> entry) { return size() > 4096; }
+    private final Map<AEItemKey, PatternSearchKeywords.Directions> localKeywords = new LinkedHashMap<>(256, 0.75F, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<AEItemKey, PatternSearchKeywords.Directions> entry) { return size() > 4096; }
     };
     private final List<PatternPreviewEntry> quickMoveTargets = new ArrayList<>();
     private boolean quickMoveDrag;
@@ -62,7 +65,33 @@ final class CraftingPatternPreviewState {
         this.player = player;
         Arrays.fill(displayed, -1);
         Arrays.fill(displayedSubs, -1);
-        if (player.level().isClientSide) craftingInterface.getPatternPreviewSync().listen(receiver);
+        if (player.level().isClientSide) {
+            var sync = craftingInterface.getPatternPreviewSync();
+            sync.listen(receiver);
+            var view = sync.clientView();
+            inputSearch = boundedQuery(view.inputSearch());
+            outputSearch = boundedQuery(view.outputSearch());
+            scrollRow = view.scrollRow();
+            rows.filter(inputSearch, outputSearch);
+            var snapshot = sync.clientSnapshot();
+            if (snapshot != null) {
+                entries = snapshot.entries();
+                revision = snapshot.revision();
+                epoch = snapshot.epoch();
+                rows.reset(entries);
+                scrollRow = Math.clamp(scrollRow, 0, getMaxScrollRow());
+            }
+        }
+    }
+
+    void tick() {
+        // UI construction precedes assigning player.containerMenu. Probe only once the actual menu is ready.
+        if (!player.level().isClientSide || !(player.containerMenu instanceof ModularUIContainerMenu menu)
+                || !(menu.uiHolder instanceof BlockUIMenuType.BlockUIHolder holder)
+                || !holder.pos.equals(craftingInterface.getBlockPos()) || requestedMenuId == menu.containerId) return;
+        menuId = menu.containerId;
+        requestedMenuId = menu.containerId;
+        craftingInterface.getPatternPreviewSync().requestOpen(menuId, revision, epoch);
     }
 
     PatternItemSlot createSlot(int visualSlot) {
@@ -70,10 +99,12 @@ final class CraftingPatternPreviewState {
         PatternItemSlot slot = ClientUIBridge.call("createPatternSlot", Slot.class, local,
                 PatternItemSlot.class, () -> new PatternItemSlot(local));
         slots[visualSlot] = slot;
-        slot.highlighted(() -> displayed[visualSlot] >= 0 && !search.isBlank()
-                && rows.matches(scrollRow * CraftingInterfaceUI.PREVIEW_COLUMNS + visualSlot));
-        slot.dimmed(() -> displayed[visualSlot] >= 0
-                && !rows.matches(scrollRow * CraftingInterfaceUI.PREVIEW_COLUMNS + visualSlot));
+        slot.setVisible(false);
+        slot.setActive(false);
+        if (visualSlot == slots.length - 1) {
+            updateSlots();
+        }
+        slot.highlighted(() -> displayed[visualSlot] >= 0 && (!inputSearch.isBlank() || !outputSearch.isBlank()));
         slot.addEventListener(UIEvents.HOVER_TOOLTIPS, event -> {
             int index = displayed[visualSlot];
             if (index < 0) return;
@@ -111,7 +142,7 @@ final class CraftingPatternPreviewState {
     }
 
     private void act(int visualSlot, int action, int button) {
-        if (!player.level().isClientSide || revision < 0 || pending != null
+        if (!player.level().isClientSide || revision < 0
                 || menuId != player.containerMenu.containerId) return;
         int index = displayed[visualSlot];
         if (index < 0 || index >= entries.length) return;
@@ -122,6 +153,10 @@ final class CraftingPatternPreviewState {
         // belongs: it hands the container over to that integration and re-scans its rows per revision. Offering
         // it here as well would mean two ways to change the same contents, from a screen that only ever reads.
         if (displayedSubs[visualSlot] >= 0 || entry.auxiliaryDisk()) return;
+        sendAction(entry, action, button);
+    }
+
+    private void sendAction(PatternPreviewEntry entry, int action, int button) {
         CompoundTag payload = new CompoundTag();
         payload.putInt("menu", menuId);
         payload.putInt("revision", revision);
@@ -131,6 +166,25 @@ final class CraftingPatternPreviewState {
         payload.putInt("action", action);
         payload.putInt("button", button);
         craftingInterface.rpcToServer("actOnPatternPreview", payload);
+    }
+
+    boolean hasCarriedPattern() {
+        ItemStack carried = player.containerMenu.getCarried();
+        return PatternDetailsHelper.isEncodedPattern(carried) || PatternDiskSupport.isAuxiliaryContainer(carried);
+    }
+
+    /** As in the original manager, clicking blank panel space inserts into an actual empty bus slot. */
+    boolean insertCarriedPattern(int button) {
+        if ((button != 0 && button != 1) || !player.level().isClientSide || revision < 0
+                || menuId != player.containerMenu.containerId) return false;
+        if (!hasCarriedPattern()) return false;
+        for (PatternPreviewEntry entry : entries) {
+            if (entry.auxiliaryDisk() || !entry.stack().isEmpty()) continue;
+            // The existing RPC rechecks the menu, physical slot, carried stack, duplicates and mutation lock.
+            sendAction(entry, 0, button);
+            return true;
+        }
+        return false;
     }
 
     void endQuickMoveDrag() {
@@ -159,7 +213,7 @@ final class CraftingPatternPreviewState {
     }
 
     private void queueQuickMove(int visualSlot) {
-        if (!player.level().isClientSide || quickMoveRevision < 0 || pending != null
+        if (!player.level().isClientSide || quickMoveRevision < 0
                 || menuId != player.containerMenu.containerId) return;
         int index = displayed[visualSlot];
         if (index < 0 || index >= entries.length) return;
@@ -199,8 +253,12 @@ final class CraftingPatternPreviewState {
     }
 
     boolean quickMoveFromInventory(Slot source) {
-        if (!(source.getItem().getItem() instanceof appeng.crafting.pattern.EncodedPatternItem<?>)) return false;
-        if (!player.level().isClientSide || revision < 0 || pending != null
+        // An encoded pattern or a pattern disk: a bus takes either in the same slot. Which host a stack would
+        // go to is resolved on the server, so this only has to tell whether the move is worth sending - a stack
+        // no bus takes simply finds no slot over there.
+        if (!(source.getItem().getItem() instanceof appeng.crafting.pattern.EncodedPatternItem<?>)
+                && !PatternDiskSupport.isAuxiliaryContainer(source.getItem())) return false;
+        if (!player.level().isClientSide || revision < 0
                 || menuId != player.containerMenu.containerId || !player.containerMenu.getCarried().isEmpty()) return false;
         for (PatternPreviewEntry entry : entries) {
             // A disk's slot reads as empty here too, so skipping on the stack alone would aim the insert at the
@@ -223,11 +281,23 @@ final class CraftingPatternPreviewState {
         return false;
     }
 
-    private void receive(CompoundTag payload) {
+    void receive(CompoundTag payload) {
         if (!player.level().isClientSide || craftingInterface.getLevel() == null
                 || payload.getInt("menu") != player.containerMenu.containerId) return;
+        long incomingEpoch = payload.getLong("epoch");
+        if (payload.getBoolean("reuse")) {
+            if (revision < 0 || incomingEpoch != epoch || payload.getInt("base") != revision
+                    || payload.getInt("size") != entries.length) {
+                return;
+            }
+            menuId = payload.getInt("menu");
+            revision = payload.getInt("revision");
+            pending = null;
+            return;
+        }
         boolean full = payload.getBoolean("full");
         if (payload.getBoolean("first")) {
+            pendingEpoch = incomingEpoch;
             pending = null;
             pendingChanges.clear();
             receivedEntries = 0;
@@ -239,7 +309,7 @@ final class CraftingPatternPreviewState {
             pendingRevision = payload.getInt("revision");
             menuId = payload.getInt("menu");
         }
-        if (pending == null || payload.getInt("revision") != pendingRevision) return;
+        if (pending == null || incomingEpoch != pendingEpoch || payload.getInt("revision") != pendingRevision) return;
         var batch = payload.getList("entries", Tag.TAG_COMPOUND);
         for (int index = 0; index < batch.size(); index++) {
             CompoundTag entry = batch.getCompound(index);
@@ -261,18 +331,24 @@ final class CraftingPatternPreviewState {
                     CompoundTag change = changes.getCompound(recipe);
                     int target = change.getInt("recipe");
                     if (target < 0 || target >= diskSize) { pending = null; return; }
-                    ItemStack stack = ItemStack.parseOptional(player.level().registryAccess(), change.getCompound("stack"));
-                    disk.set(target, new PatternPreviewEntry.DiskPattern(stack,
-                            keywords(stack, change.getString("keywords")), change.getByte("flags")));
+                    disk.set(target, localize(PatternPreviewEntry.DiskPattern.decode(change, player.level().registryAccess())));
                 }
                 if (disk.contains(null)) { pending = null; return; }
                 decoded = new PatternPreviewEntry(decoded.busPosition(), decoded.physicalSlot(), decoded.stack(),
-                        decoded.keywords(), decoded.flags(), List.copyOf(disk), decoded.auxiliaryDisk());
+                        decoded.inputKeywords(), decoded.outputKeywords(), disk, decoded.auxiliaryDisk());
             }
             if (pendingFull) pending[logicalSlot] = decoded;
             else pendingChanges.put(logicalSlot, decoded);
         }
-        if (!payload.getBoolean("last")) return;
+        if (!payload.getBoolean("last")) {
+            // Show received patterns immediately. A completed cached view stays visible during refreshes.
+            if (pendingFull && revision < 0) {
+                entries = pending;
+                rows.reset(entries);
+                rebuildFilter();
+            }
+            return;
+        }
         if (pendingFull) {
             for (PatternPreviewEntry entry : pending) {
                 if (entry == null) {
@@ -298,6 +374,8 @@ final class CraftingPatternPreviewState {
         }
         pending = null;
         revision = pendingRevision;
+        epoch = pendingEpoch;
+        craftingInterface.getPatternPreviewSync().cacheClientSnapshot(epoch, revision, entries);
         if (pendingFull) {
             rows.reset(entries);
             rebuildFilter();
@@ -308,54 +386,54 @@ final class CraftingPatternPreviewState {
         }
     }
 
-    boolean showsSubstitutionPatterns() { return showSubstitution; }
-    boolean showsFluidSubstitutionPatterns() { return showFluidSubstitution; }
-
     private PatternPreviewEntry localize(PatternPreviewEntry entry) {
-        List<PatternPreviewEntry.DiskPattern> disk = entry.diskPatterns().stream().map(pattern ->
-                new PatternPreviewEntry.DiskPattern(pattern.stack(), keywords(pattern.stack(), pattern.keywords()), pattern.flags())).toList();
+        List<PatternPreviewEntry.DiskPattern> disk = entry.diskPatterns().stream().map(this::localize).toList();
+        var terms = keywords(entry.stack(), entry.inputKeywords(), entry.outputKeywords());
         return new PatternPreviewEntry(entry.busPosition(), entry.physicalSlot(), entry.stack(),
-                keywords(entry.stack(), entry.keywords()), entry.flags(), disk, entry.auxiliaryDisk());
+                terms.inputs(), terms.output(), disk, entry.auxiliaryDisk());
     }
 
-    private String keywords(ItemStack stack, String fallback) {
+    private PatternPreviewEntry.DiskPattern localize(PatternPreviewEntry.DiskPattern pattern) {
+        var terms = keywords(pattern.stack(), pattern.inputKeywords(), pattern.outputKeywords());
+        return new PatternPreviewEntry.DiskPattern(pattern.stack(), terms.inputs(), terms.output());
+    }
+
+    private PatternSearchKeywords.Directions keywords(ItemStack stack, String inputs, String output) {
+        var fallback = new PatternSearchKeywords.Directions(inputs, output);
         if (stack.isEmpty()) return fallback;
         // Translate on the viewer's client, once per distinct pattern, not in each frame/search keystroke.
-        String localized = localKeywords.computeIfAbsent(AEItemKey.of(stack), key -> {
-            StringBuilder text = new StringBuilder(stack.getHoverName().getString());
+        var localized = localKeywords.computeIfAbsent(AEItemKey.of(stack), key -> {
             try {
-                var details = PatternDetailsHelper.decodePattern(stack, player.level());
-                if (details != null) {
-                    for (var output : details.getOutputs()) if (output != null)
-                        text.append('\n').append(output.what().getDisplayName().getString());
-                    for (var input : details.getInputs()) if (input != null)
-                        for (var possible : input.getPossibleInputs()) if (possible != null)
-                            text.append('\n').append(possible.what().getDisplayName().getString());
-                }
+                return PatternSearchKeywords.directions(PatternDetailsHelper.decodePattern(stack, player.level()));
             } catch (RuntimeException ignored) {
-                // Some integrations only decode on the server; keep their supplied search terms.
+                // Some integrations only decode on the server; retain their directional terms.
+                return PatternSearchKeywords.Directions.EMPTY;
             }
-            return text.toString().toLowerCase(Locale.ROOT);
         });
-        return fallback + '\n' + localized;
+        return fallback.append(localized);
     }
 
-    void toggleSubstitutionPatterns() {
-        showSubstitution = !showSubstitution;
-        resetFilter();
-    }
-
-    void toggleFluidSubstitutionPatterns() {
-        showFluidSubstitution = !showFluidSubstitution;
-        resetFilter();
-    }
-
-    void setSearch(String value) {
-        String next = value == null ? "" : value.substring(0, Math.min(value.length(), CraftingInterfaceUI.PREVIEW_QUERY_MAX_LENGTH));
-        if (!search.equals(next)) {
-            search = next;
+    void setInputSearch(String value) {
+        String next = boundedQuery(value);
+        if (!inputSearch.equals(next)) {
+            inputSearch = next;
             resetFilter();
         }
+    }
+
+    String getInputSearch() { return inputSearch; }
+    String getOutputSearch() { return outputSearch; }
+
+    void setOutputSearch(String value) {
+        String next = boundedQuery(value);
+        if (!outputSearch.equals(next)) {
+            outputSearch = next;
+            resetFilter();
+        }
+    }
+
+    private static String boundedQuery(String value) {
+        return value == null ? "" : value.substring(0, Math.min(value.length(), CraftingInterfaceUI.PREVIEW_QUERY_MAX_LENGTH));
     }
 
     private void resetFilter() {
@@ -364,20 +442,13 @@ final class CraftingPatternPreviewState {
     }
 
     private void rebuildFilter() {
-        rows.filter(search, showSubstitution, showFluidSubstitution, showEmptyRows);
+        rows.filter(inputSearch, outputSearch);
         scrollRow = Math.clamp(scrollRow, 0, getMaxScrollRow());
         updateSlots();
     }
 
-    boolean showsEmptyRows() { return showEmptyRows; }
-
-    void toggleEmptyRows() {
-        showEmptyRows = !showEmptyRows;
-        resetFilter();
-    }
-
     Component status() {
-        if (revision < 0 || pending != null) return Component.translatable(
+        if (rows.size() == 0 && revision < 0) return Component.translatable(
                 "gui.neoecoae.crafting_interface.preview.loading", receivedEntries);
         if (rows.size() == 0) return Component.translatable("gui.neoecoae.crafting_interface.preview.no_results");
         return Component.translatable("gui.neoecoae.crafting_interface.preview.rows",
@@ -403,7 +474,14 @@ final class CraftingPatternPreviewState {
             }
             if (slots[visual] != null && !ItemStack.matches(slots[visual].getSlot().getItem(), shown))
                 slots[visual].setItem(shown.copy(), false);
+            if (slots[visual] != null) {
+                // Preserve each widget's fixed 18px position, but suppress its texture, overlay and hitbox.
+                boolean occupied = !shown.isEmpty();
+                slots[visual].setVisible(occupied);
+                slots[visual].setActive(occupied);
+            }
         }
+        craftingInterface.getPatternPreviewSync().cacheClientView(inputSearch, outputSearch, scrollRow);
     }
 
     int getRowCount() { return rows.size(); }

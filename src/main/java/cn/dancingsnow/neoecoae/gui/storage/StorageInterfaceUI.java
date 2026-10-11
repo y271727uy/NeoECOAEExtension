@@ -1,39 +1,41 @@
 package cn.dancingsnow.neoecoae.gui.storage;
 
-import cn.dancingsnow.neoecoae.gui.theme.NETextures;
-import cn.dancingsnow.neoecoae.gui.theme.NEStyleSheets;
-
 import cn.dancingsnow.neoecoae.blocks.entity.ECOMachineInterfaceBlockEntity;
+import cn.dancingsnow.neoecoae.gui.GuiTitleProvider;
+import cn.dancingsnow.neoecoae.gui.common.ECOModularUI;
+import cn.dancingsnow.neoecoae.gui.json.NeoUiJsonContext;
+import cn.dancingsnow.neoecoae.gui.json.NeoUiJsonLoader;
+import cn.dancingsnow.neoecoae.gui.theme.NETextures;
 import cn.dancingsnow.neoecoae.impl.storage.ECOStorageInterfaceMode;
 import cn.dancingsnow.neoecoae.multiblock.cluster.NEStorageCluster;
+import com.google.gson.JsonObject;
+import com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.DataBindingBuilder;
+import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
+import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
+import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Toggle;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ToggleGroupElement;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
 import com.lowdragmc.lowdraglib2.gui.ui.layout.LayoutProperties;
 import com.lowdragmc.lowdraglib2.gui.ui.style.animation.Transition;
-import com.lowdragmc.lowdraglib2.utils.animation.Animation;
 import com.lowdragmc.lowdraglib2.math.interpolate.Eases;
-import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
-import com.lowdragmc.lowdraglib2.gui.ui.style.StylesheetManager;
-import com.lowdragmc.lowdraglib2.gui.sync.bindings.impl.DataBindingBuilder;
+import com.lowdragmc.lowdraglib2.utils.animation.Animation;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
-import com.lowdragmc.lowdraglib2.gui.ui.data.Horizontal;
-import com.lowdragmc.lowdraglib2.gui.ui.data.Vertical;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
-
-import java.util.List;
-import java.util.function.Supplier;
-import java.util.Map;
 import java.text.NumberFormat;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Supplier;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 
 public final class StorageInterfaceUI {
+    private static final ResourceLocation JSON_LAYOUT =
+        ResourceLocation.fromNamespaceAndPath("neoecoae", "screens/storage/storage_interface");
     private static final int STATUS_CONNECTED = 0x55CC77;
     private static final int STATUS_DISCONNECTED = 0xDD5555;
     private static final int INFINITE_VALUE = 0xCA6CFF;
@@ -41,21 +43,41 @@ public final class StorageInterfaceUI {
     private StorageInterfaceUI() {}
 
     public static ModularUI create(ECOMachineInterfaceBlockEntity<NEStorageCluster> storageInterface, Player player) {
-        UIElement root = new UIElement().layout(layout -> {
-            layout.width(224).height(116).paddingAll(8).gapAll(6).flexDirection(FlexDirection.COLUMN);
-        }).addClass("panel_bg");
-        root.setOverflowVisible(true);
-        root.addChild(cn.dancingsnow.neoecoae.gui.common.HostSideButtonBar.left(
-            cn.dancingsnow.neoecoae.gui.common.CreativeStorageInputButton.create(
-                storageInterface::isIgnoringCreativeStorageInput,
-                storageInterface::toggleIgnoreCreativeStorageInput)));
-
         var transferred = new cn.dancingsnow.neoecoae.gui.common.SampledValue<>(
             () -> player.level().getGameTime(), storageInterface::getTransferredLastTick, 5);
-        root.addChild(boundLabel(() -> Component.translatable("gui.neoecoae.storage_interface.title")));
-        UIElement contentFrame = new UIElement().layout(layout -> {
-            layout.widthPercent(100).flex(1).paddingAll(8).gapAll(5).flexDirection(FlexDirection.COLUMN);
-        }).style(style -> style.backgroundTexture(NETextures.HOST_PANEL_BORDER));
+        UIElement root = NeoUiJsonLoader.load(JSON_LAYOUT, new JsonContext(storageInterface, transferred));
+        return ECOModularUI.create(root, player);
+    }
+
+    private static final class JsonContext implements NeoUiJsonContext {
+        private final ECOMachineInterfaceBlockEntity<NEStorageCluster> storageInterface;
+        private final cn.dancingsnow.neoecoae.gui.common.SampledValue<Long> transferred;
+
+        private JsonContext(ECOMachineInterfaceBlockEntity<NEStorageCluster> storageInterface,
+                            cn.dancingsnow.neoecoae.gui.common.SampledValue<Long> transferred) {
+            this.storageInterface = storageInterface;
+            this.transferred = transferred;
+        }
+
+        @Override
+        public UIElement createCustom(JsonObject definition) {
+            return switch (definition.get("custom").getAsString()) {
+                case "toolbar" -> cn.dancingsnow.neoecoae.gui.common.HostSideButtonBar.left(
+                    cn.dancingsnow.neoecoae.gui.common.CreativeStorageInputButton.create(
+                        storageInterface::isIgnoringCreativeStorageInput,
+                        storageInterface::toggleIgnoreCreativeStorageInput));
+                case "title" -> boundLabel(() -> GuiTitleProvider.title(storageInterface.getBlockState(),
+                    Component.translatable("gui.neoecoae.storage_interface.title")));
+                case "content" -> contentFrame(storageInterface, transferred);
+                default -> throw new IllegalArgumentException("Unknown storage interface UI custom element: "
+                    + definition.get("custom").getAsString());
+            };
+        }
+    }
+
+    private static UIElement contentFrame(ECOMachineInterfaceBlockEntity<NEStorageCluster> storageInterface,
+                                          cn.dancingsnow.neoecoae.gui.common.SampledValue<Long> transferred) {
+        UIElement contentFrame = new UIElement().style(style -> style.backgroundTexture(NETextures.HOST_PANEL_BORDER));
         contentFrame.addChild(modeSelector(storageInterface));
         contentFrame.addChild(statusLabel(() -> Component.translatable("gui.neoecoae.storage_interface.structure")
             .append(": ").append(Component.translatable(storageInterface.isInfiniteTransferAvailable()
@@ -68,9 +90,7 @@ public final class StorageInterfaceUI {
             .append(Component.literal(NumberFormat.getIntegerInstance(Locale.ROOT)
                 .format(transferred.get())).withColor(INFINITE_VALUE))
             .append(Component.translatable("gui.neoecoae.storage_interface.transfer_suffix"))));
-        root.addChild(contentFrame);
-
-        return new ModularUI(UI.of(root, List.of(StylesheetManager.INSTANCE.getStylesheetSafe(NEStyleSheets.ECO))), player);
+        return contentFrame;
     }
 
     private static UIElement modeSelector(ECOMachineInterfaceBlockEntity<NEStorageCluster> storageInterface) {

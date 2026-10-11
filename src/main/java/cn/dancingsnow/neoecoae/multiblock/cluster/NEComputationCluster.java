@@ -116,7 +116,7 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
         if (isDestroyed()) return;
         // Keep nodes attached until cancellation has returned CPU inventory and notified loaded workers.
         // Ordinary destroy() preserves deferred CPU state for topology rebuilds and chunk unloads.
-        for (ECOComputationThreadingCoreBlockEntity core : List.copyOf(threadingCores)) {
+        for (ECOComputationThreadingCoreBlockEntity core : threadingCores) {
             core.prepareForPermanentRemoval();
         }
         destroy();
@@ -362,7 +362,7 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
             return;
         }
 
-        List<ICraftingPlan> plansToKill = List.copyOf(this.activeCpus.keySet());
+        List<ICraftingPlan> plansToKill = new ArrayList<>(this.activeCpus.keySet());
         for (ICraftingPlan plan : plansToKill) {
             this.killCpu(plan, false, false);
         }
@@ -385,7 +385,7 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
 
     private long getActiveJobBytes() {
         long usedStorage = 0L;
-        for (ICraftingPlan plan : List.copyOf(this.activeCpus.keySet())) {
+        for (ICraftingPlan plan : new ArrayList<>(this.activeCpus.keySet())) {
             if (bigOrderPlans.containsKey(plan)) continue;
             usedStorage = NEMath.saturatingAdd(
                 usedStorage,
@@ -397,7 +397,7 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
 
     public List<ECOCraftingCPU> getActiveCPUs() {
         List<ECOCraftingCPU> cpus = new ArrayList<>();
-        for (Map.Entry<ICraftingPlan, ECOCraftingCPU> entry : List.copyOf(activeCpus.entrySet())) {
+        for (Map.Entry<ICraftingPlan, ECOCraftingCPU> entry : new ArrayList<>(activeCpus.entrySet())) {
             ECOCraftingCPU cpu = entry.getValue();
             if (cpu.getLogic().hasJob() || cpu.getLogic().isMarkedForDeletion() || cpu.hasRemainingItems()) {
                 cpus.add(cpu);
@@ -408,7 +408,7 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
 
     public void pruneInactiveCPUs() {
         List<ICraftingPlan> killList = new ArrayList<>();
-        for (Map.Entry<ICraftingPlan, ECOCraftingCPU> entry : List.copyOf(activeCpus.entrySet())) {
+        for (Map.Entry<ICraftingPlan, ECOCraftingCPU> entry : new ArrayList<>(activeCpus.entrySet())) {
             ECOCraftingCPU cpu = entry.getValue();
             if (!cpu.getLogic().hasJob() && !cpu.getLogic().isMarkedForDeletion() && !cpu.hasRemainingItems()) {
                 killList.add(entry.getKey());
@@ -483,7 +483,13 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
         }
     }
 
-    private void updateGridForChangedCpu() {
+    /**
+     * Tells AE2's CraftingService to rebuild its CPU cache after this custom cluster
+     * becomes visible or changes availability.  Unlike a native CraftingCPU, an ECO
+     * cluster is not represented by a grid node owned by CraftingService, so cluster
+     * formation must explicitly publish the change.
+     */
+    public void notifyGridCpuChange() {
         boolean posted = false;
 
         for (var r : this.blockEntities) {
@@ -494,5 +500,9 @@ public class NEComputationCluster extends NECluster<NEComputationCluster> {
             }
         }
 
+    }
+
+    private void updateGridForChangedCpu() {
+        notifyGridCpuChange();
     }
 }

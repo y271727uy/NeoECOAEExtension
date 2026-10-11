@@ -36,6 +36,7 @@ public record CycleSolveDiagnostic(Code code, String message) {
         /** The SCC can fire but no firing changes the deficit; it cannot create the required output. */
         NO_PRODUCTIVE_FIRING,
         STATE_BUDGET_EXHAUSTED,
+        MEMORY_BUDGET_EXHAUSTED,
         FIRING_DEPTH_TRUNCATED,
         KEY_LIMIT_EXCEEDED,
         PATTERN_LIMIT_EXCEEDED,
@@ -45,6 +46,8 @@ public record CycleSolveDiagnostic(Code code, String message) {
         EXECUTION_AMOUNT_UNREPRESENTABLE,
         CANCELLED,
         NOT_IMPLEMENTED,
-        SEARCH_METRICS
+        SEARCH_METRICS,
+        /** An integration's matching/output contract excludes exact circuit algebra; this is not a budget cut. */
+        STATIC_CYCLE_CONTRACT_UNAVAILABLE
     }
 }

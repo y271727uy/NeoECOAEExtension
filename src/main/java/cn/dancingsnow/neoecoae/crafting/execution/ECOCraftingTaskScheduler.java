@@ -292,8 +292,14 @@ final class ECOCraftingTaskScheduler {
                     continue;
                 }
 
+                if (current.executionRuntime != null) {
+                    allowedCount = current.executionRuntime.limitCycleBatch(candidate, inputs, inventory, allowedCount);
+                }
+                var dispatchCandidate = allowedCount == candidate.maxDispatchCount() ? candidate
+                    : new ECOExecutionRuntime.DispatchCandidate(candidate.taskId(), candidate.phaseIndex(), pattern,
+                        allowedCount, candidate.blocksOrderedPhase(), candidate.orderedStepIndex());
                 var request = new ECOCraftingDispatchRequest(
-                        current, candidate, pattern, inputs, outputs, remainders, allowedCount, inventory, level);
+                        current, dispatchCandidate, pattern, inputs, outputs, remainders, allowedCount, inventory, level);
                 var dispatch = providerDispatcher.dispatchCandidate(
                         request,
                         providers,
@@ -401,9 +407,9 @@ final class ECOCraftingTaskScheduler {
             physical.put(key, physicalInsertGenerations.getLong(key));
             startupSeeds.put(key, runtime.startupSeedGeneration(key));
         }
-        // These snapshots are privately owned; wrap without copying back into boxed JDK maps.
+        // These snapshots are privately owned by the epoch.
         return new InputAvailabilityEpoch(precise, physicalInsertGeneration, runtime.startupSeedGeneration(),
-                Object2LongMaps.unmodifiable(physical), Object2LongMaps.unmodifiable(startupSeeds),
+                physical, startupSeeds,
                 AE2PatternIntrospection.reloadGeneration());
     }
 

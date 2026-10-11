@@ -55,6 +55,7 @@ public final class ECOInfiniteStorageData extends SavedData {
     private CompoundTag unresolvedMetadata = new CompoundTag();
     private boolean unreadable;
     private boolean incompleteLegacy;
+    private boolean mountedStorageAvailable = true;
     private String failure;
     // Written by the IO worker when an asynchronous snapshot write fails; the next save retries.
     private volatile String writeFailure;
@@ -153,7 +154,7 @@ public final class ECOInfiniteStorageData extends SavedData {
                     }
                     if (!validRestorePlan(amount, targets, plan))
                         throw new IllegalArgumentException("Incomplete restore allocation");
-                    restore = new Restore(entry.getUUID("restore"), Set.copyOf(targets), entry.getString("restoreFailure"), Map.copyOf(plan));
+                    restore = new Restore(entry.getUUID("restore"), targets, entry.getString("restoreFailure"), plan);
                 }
                 if (amount.isZero() && restore != null) throw new IllegalArgumentException("Empty reserved entry");
                 // Decode all metadata before changing the authoritative quantity.
@@ -176,6 +177,7 @@ public final class ECOInfiniteStorageData extends SavedData {
             }
             if (!invalid.isEmpty()) data.unresolvedMetadata.put("migrations", invalid);
         }
+        data.refreshMountedStorageAvailability();
         return data;
     }
 
@@ -260,8 +262,15 @@ public final class ECOInfiniteStorageData extends SavedData {
     @Override
     public void setDirty() {
         revision++;
+        refreshMountedStorageAvailability();
         super.setDirty();
     }
+
+    private void refreshMountedStorageAvailability() {
+        mountedStorageAvailable = canWrite() && restores.isEmpty();
+    }
+
+    boolean canUseMountedStorage() { return mountedStorageAvailable; }
 
     public long revision() {
         return revision;
@@ -409,11 +418,13 @@ public final class ECOInfiniteStorageData extends SavedData {
 
     public void markUnreadable(String reason) {
         unreadable = true;
+        refreshMountedStorageAvailability();
         failure = reason;
     }
 
     public void markIncompleteLegacy(List<String> failures) {
         incompleteLegacy = true;
+        refreshMountedStorageAvailability();
         failure = String.join("; ", failures);
     }
 
@@ -425,7 +436,7 @@ public final class ECOInfiniteStorageData extends SavedData {
             if (!existing.plan().isEmpty()) return true;
             // Old reservations have no target quantities. Upgrade them before touching any target.
         }
-        restores.put(key, new Restore(transaction, Set.copyOf(targets), "", Map.copyOf(plan)));
+        restores.put(key, new Restore(transaction, targets, "", plan));
         setDirty();
         return true;
     }

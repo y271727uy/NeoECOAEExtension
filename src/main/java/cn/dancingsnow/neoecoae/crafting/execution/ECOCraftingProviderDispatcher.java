@@ -5,14 +5,20 @@ import cn.dancingsnow.neoecoae.crafting.execution.batch.*;
 import cn.dancingsnow.neoecoae.api.me.provider.ECOIndeterminateBatchException;
 
 import java.util.List;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
+import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.crafting.execution.CraftingCpuHelper;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOBatchCraftingHelper;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOFastPathStacks;
-import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProvider;
+import cn.dancingsnow.neoecoae.api.me.provider.ECOParallelCraftingProviders;
+import cn.dancingsnow.neoecoae.compat.ae2.ECOExternalProviderBlocking;
 import appeng.hooks.ticking.TickHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -29,6 +35,8 @@ final class ECOCraftingProviderDispatcher {
     private final ECOProcessingPatternDispatcher processing;
     private final ECOCraftingEnergyTransaction energyTransaction;
     private final ECOCraftingDispatchAccounting accounting;
+    private final Map<ICraftingProvider, Set<IPatternDetails>> omniDeferredPatterns = new IdentityHashMap<>();
+    private long omniDispatchTick = Long.MIN_VALUE;
 
     ECOCraftingProviderDispatcher(ECOCraftingCPULogic owner, ECOCraftingFastPathDispatcher fastPath,
             ECOCraftingEnergyTransaction energyTransaction, ECOCraftingDispatchAccounting accounting) {
@@ -40,17 +48,25 @@ final class ECOCraftingProviderDispatcher {
 
     void beginTick(long gameTick) {
         processing.beginTick(gameTick);
+        if (omniDispatchTick != gameTick) {
+            omniDispatchTick = gameTick;
+            omniDeferredPatterns.clear();
+        }
     }
 
     void reset() {
         processing.reset();
+        omniDeferredPatterns.clear();
+        omniDispatchTick = Long.MIN_VALUE;
     }
 
     boolean isEligible(ICraftingProvider provider, ECOCraftingDispatchBudget budget) {
+        if (ECOExternalProviderBlocking.isEnabled(provider)) return budget.canAttemptOrdinary();
         return budget.canAttemptOrdinary()
                 || fastPath.supportsBatch(provider)
-                || provider instanceof ECOParallelCraftingProvider
+                || ECOParallelCraftingProviders.find(provider) != null
                 || cn.dancingsnow.neoecoae.compat.ae2lt.ECOAe2LtDirectDispatch.open(provider) != null
+                || cn.dancingsnow.neoecoae.compat.omnisequence.ECOOmniSequenceDirectDispatch.isEligible(provider)
                 || processing.supports(provider, null);
     }
 
@@ -61,23 +77,25 @@ final class ECOCraftingProviderDispatcher {
         double singlePower = CraftingCpuHelper.calculatePatternPower(request.inputs());
 
         for (var provider : providers) {
-            if (request.job().exactOrder) {
+            if (isOmniDispatchDeferred(provider, request.pattern())) continue;
+            boolean blocking = ECOExternalProviderBlocking.isEnabled(provider);
+            if (!blocking && request.job().exactOrder) {
                 var exact = fastPath.tryExactDispatch(request, provider, singlePower, energyService, markProviderAttempt);
                 if (exact != null) return Result.accepted(
                     cn.dancingsnow.neoecoae.crafting.adapter.ae2.ECOExactCraftingPlan.bounded(exact), true);
                 if (request.job().suspended) return Result.none();
             }
             // Processing providers get the CPU-owned batch attempt before other optional dispatch paths.
-            var processingResult = processing.tryDispatch(
+            var processingResult = blocking ? null : processing.tryDispatch(
                     request, provider, singlePower, energyService, markProviderAttempt);
             if (processingResult != null) {
                 return Result.accepted(processingResult.acceptedCrafts(), true);
             }
             if (request.job().suspended) return Result.none();
             // Native batch providers already own their one-copy fallback and target recovery.
-            if (processing.supports(provider, request.pattern())) continue;
+            if (!blocking && processing.supports(provider, request.pattern())) continue;
 
-            boolean scaledProvider = processing.supportsScaledDispatchCached(request, provider);
+            boolean scaledProvider = !blocking && processing.supportsScaledDispatchCached(request, provider);
             if (scaledProvider) {
                 if (processing.isScaledAttemptBudgetExhausted()) continue;
                 if (processing.isScaledFallbackDeferred(request, provider)) continue;
@@ -96,14 +114,23 @@ final class ECOCraftingProviderDispatcher {
                 // an overloaded provider becomes completely undispatchable.
             }
 
-            var fastResult = fastPath.tryDispatch(
+            var fastResult = blocking ? null : fastPath.tryDispatch(
                     request, provider, singlePower, energyService, diagnostics, markProviderAttempt);
             if (fastResult != null) {
                 return Result.accepted(fastResult.acceptedCrafts(), true);
             }
             if (request.job().suspended) return Result.none();
 
-            var parallelResult = tryDispatchOrdinaryBatch(
+            var omniResult = blocking ? null : tryDispatchOmniSequenceBatch(
+                    request, provider, singlePower, energyService, budget, diagnostics,
+                    markProviderAttempt, markNormalResume);
+            if (omniResult != null) {
+                return omniResult;
+            }
+            if (request.job().suspended) return Result.none();
+            if (isOmniDispatchDeferred(provider, request.pattern())) continue;
+
+            var parallelResult = blocking ? null : tryDispatchOrdinaryBatch(
                     request, provider, singlePower, energyService, budget, diagnostics,
                     markProviderAttempt, markNormalResume);
             if (parallelResult != null) {
@@ -176,7 +203,8 @@ final class ECOCraftingProviderDispatcher {
             ECODispatchStallDiagnostics diagnostics,
             Consumer<ICraftingProvider> markProviderAttempt,
             Runnable markNormalResume) {
-        if (!(provider instanceof ECOParallelCraftingProvider parallelProvider)) {
+        var parallelProvider = ECOParallelCraftingProviders.find(provider);
+        if (parallelProvider == null) {
             return null;
         }
 
@@ -225,6 +253,79 @@ final class ECOCraftingProviderDispatcher {
         }
         diagnostics.progress(TickHandler.instance().getCurrentTick());
         return Result.accepted(accepted, false);
+    }
+
+    @Nullable
+    private Result tryDispatchOmniSequenceBatch(
+            ECOCraftingDispatchRequest request,
+            ICraftingProvider provider,
+            double singlePower,
+            IEnergyService energyService,
+            ECOCraftingDispatchBudget budget,
+            ECODispatchStallDiagnostics diagnostics,
+            Consumer<ICraftingProvider> markProviderAttempt,
+            Runnable markNormalResume) {
+        if (!cn.dancingsnow.neoecoae.compat.omnisequence.ECOOmniSequenceDirectDispatch.isLoaded()) {
+            return null;
+        }
+        try (var omni = cn.dancingsnow.neoecoae.compat.omnisequence.ECOOmniSequenceDirectDispatch.open(
+                provider, request.pattern(), request.inputs(), request.allowedCrafts())) {
+            if (omni == null) {
+                return null;
+            }
+
+            long providerCapacity = omni.maxBatchSize();
+            if (providerCapacity < 2) return null;
+
+            var plan = ECOBatchDispatchPlanning.plan(request, provider, providerCapacity, Long.MAX_VALUE,
+                    singlePower, energyService, ECOBatchMode.LINEAR);
+            // MolecularBatchDispatchContext rejects one craft; use the ordinary path before debiting anything.
+            if (plan == null || plan.craftCount() < 2) return null;
+
+            ECOBatchAdmission admission;
+            try {
+                admission = ECOBatchExecutor.execute(plan, request.inputs(), request.outputs(), request.remainders(),
+                        request.inventory(), request.level(), request.job().link.getCraftingID(),
+                        () -> energyTransaction.reserve(energyService, singlePower, plan.craftCount()), batch -> {
+                            markProviderAttempt.accept(provider);
+                            budget.recordNormalProbe();
+                            diagnostics.probe();
+                            markNormalResume.run();
+                            return omni.submit(batch, request.inputs());
+                        });
+            } catch (ECOIndeterminateBatchException failure) {
+                failAmbiguousDispatch(request, provider, "omnisequence", failure);
+                return Result.none();
+            } catch (RuntimeException failure) {
+                request.job().failPermanently("OMNISEQUENCE_BATCH_SETTLEMENT_FAILURE");
+                throw failure;
+            }
+            if (omni.shouldDeferFurtherDispatch()) {
+                omniDeferredPatterns.computeIfAbsent(provider,
+                        ignored -> Collections.newSetFromMap(new IdentityHashMap<>())).add(request.pattern());
+            }
+            if (admission.status() != ECOBatchAdmission.Status.ACCEPTED) {
+                diagnostics.pushRejected(request.pattern(), provider);
+                return null;
+            }
+            long accepted = admission.acceptedCrafts();
+            var result = ECOCraftingDispatchResult.batch(accepted,
+                    ECOBatchCraftingHelper.multiply(ECOFastPathStacks.copyCounter(request.outputs()), accepted),
+                    ECOBatchCraftingHelper.multiply(ECOFastPathStacks.copyCounter(request.remainders()), accepted));
+            try {
+                accounting.apply(request, result, () -> {}, provider);
+            } catch (RuntimeException failure) {
+                request.job().failPermanently("POST_ACCEPT_OMNISEQUENCE_ACCOUNTING_FAILURE");
+                throw failure;
+            }
+            diagnostics.progress(TickHandler.instance().getCurrentTick());
+            return Result.accepted(accepted, false);
+        }
+    }
+
+    private boolean isOmniDispatchDeferred(ICraftingProvider provider, IPatternDetails pattern) {
+        var patterns = omniDeferredPatterns.get(provider);
+        return patterns != null && patterns.contains(pattern);
     }
 
     private static void failAmbiguousDispatch(ECOCraftingDispatchRequest request, ICraftingProvider provider,

@@ -1,19 +1,21 @@
 package cn.dancingsnow.neoecoae.gui.computation;
 
 import cn.dancingsnow.neoecoae.blocks.entity.ECOMachineInterfaceBlockEntity;
-import cn.dancingsnow.neoecoae.gui.theme.NEStyleSheets;
+import cn.dancingsnow.neoecoae.gui.common.ECOModularUI;
+import cn.dancingsnow.neoecoae.gui.json.NeoUiJsonContext;
+import cn.dancingsnow.neoecoae.gui.json.NeoUiJsonLoader;
+import cn.dancingsnow.neoecoae.NeoECOAE;
+import com.google.gson.JsonObject;
 import cn.dancingsnow.neoecoae.gui.theme.NETextures;
 import cn.dancingsnow.neoecoae.multiblock.cluster.NEComputationCluster;
 import com.lowdragmc.lowdraglib2.gui.slot.ItemHandlerSlot;
 import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.data.TextWrap;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.ItemSlot;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.inventory.InventorySlots;
 import com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents;
-import com.lowdragmc.lowdraglib2.gui.ui.style.StylesheetManager;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import dev.vfyjxf.taffy.style.FlexDirection;
 import dev.vfyjxf.taffy.style.TaffyPosition;
@@ -22,6 +24,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
+import cn.dancingsnow.neoecoae.gui.GuiTitleProvider;
 
 /** Configuration surface for the computation host's fast-planning item match rules. */
 public final class ComputationInterfaceUI {
@@ -48,23 +51,37 @@ public final class ComputationInterfaceUI {
         ECOMachineInterfaceBlockEntity<NEComputationCluster> computationInterface,
         Player player
     ) {
-        UIElement root = new UIElement().layout(layout -> layout
-            .width(ROOT_WIDTH)
-            .height(ROOT_HEIGHT)
-        ).style(style -> style.backgroundTexture(NETextures.NBT_BENCH));
-        root.addChild(title());
-        root.addChild(fuzzyHint());
-        root.addChild(fuzzyItemSlots(computationInterface));
-        root.addChild(playerInventory());
-        return new ModularUI(
-            UI.of(root, java.util.List.of(StylesheetManager.INSTANCE.getStylesheetSafe(NEStyleSheets.ECO))),
-            player
-        );
+        UIElement root = NeoUiJsonLoader.load(NeoECOAE.id("screens/computation_interface"),
+            new NeoUiJsonContext() {
+                @Override
+                public UIElement createCustom(JsonObject node) {
+                    return switch (node.has("name") ? node.get("name").getAsString() : "") {
+                        case "computation_interface_title" -> title(computationInterface);
+                        case "computation_interface_hint" -> fuzzyHint();
+                        case "computation_fuzzy_grid" -> fuzzyItemSlots(computationInterface);
+                        default -> null;
+                    };
+                }
+
+                @Override
+                public void configure(JsonObject node, UIElement element) {
+                    if ("player_inventory".equals(node.has("type") ? node.get("type").getAsString() : "")
+                        && element instanceof InventorySlots inventory) {
+                        inventory.apply(slot -> slot.getStyle().backgroundTexture(IGuiTexture.EMPTY));
+                        inventory.getChildren().forEach(child -> child.getStyle().backgroundTexture(IGuiTexture.EMPTY));
+                        for (InventorySlots.Row row : inventory.rows) {
+                            row.apply(slot -> slot.transform(transform -> transform.translate(0, 1)));
+                        }
+                    }
+                }
+            });
+        return ECOModularUI.create(root, player);
     }
 
-    private static UIElement title() {
+    private static UIElement title(ECOMachineInterfaceBlockEntity<?> blockEntity) {
         return new TextElement()
-            .setText(Component.translatable("block.neoecoae.computation_interface"))
+            .setText(GuiTitleProvider.title(blockEntity.getBlockState(),
+                Component.translatable("block.neoecoae.computation_interface")))
             .textStyle(style -> style.adaptiveHeight(true).adaptiveWidth(true)
                 .textWrap(TextWrap.NONE).textColor(0x3F3D52).textShadow(false))
             .layout(layout -> layout
@@ -101,7 +118,11 @@ public final class ComputationInterfaceUI {
             );
             for (int column = 0; column < GRID_COLUMNS; column++) {
                 int slot = row * GRID_COLUMNS + column;
-                ItemSlot itemSlot = new FuzzyPlanningItemSlot(computationInterface, slot).xeiPhantom();
+                ItemSlot itemSlot = new FuzzyPlanningItemSlot(computationInterface, slot);
+                // Phantom handlers load client-only recipe-viewer classes.
+                if (computationInterface.getLevel() != null && computationInterface.getLevel().isClientSide()) {
+                    itemSlot.xeiPhantom();
+                }
                 itemSlot.layout(layout -> layout.width(SLOT_SIZE).height(SLOT_SIZE));
                 line.addChild(itemSlot);
             }

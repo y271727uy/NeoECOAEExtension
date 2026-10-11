@@ -5,6 +5,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.Setting;
+import appeng.api.config.YesNo;
+import appeng.api.util.IConfigManager;
 import appeng.api.networking.crafting.ICraftingPlan;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.networking.crafting.ICraftingProvider;
@@ -18,6 +21,7 @@ import appeng.crafting.CraftingLink;
 import appeng.crafting.inv.ListCraftingInventory;
 import appeng.crafting.pattern.AEProcessingPattern;
 import appeng.helpers.patternprovider.PatternProviderLogic;
+import cn.dancingsnow.neoecoae.compat.ae2.ECOExternalProviderBlocking;
 import net.pedroksl.advanced_ae.common.logic.AdvPatternProviderLogic;
 import net.pedroksl.advanced_ae.common.patterns.AdvProcessingPattern;
 import net.pedroksl.advanced_ae.common.patterns.IAdvPatternDetails;
@@ -25,11 +29,37 @@ import cn.dancingsnow.neoecoae.mixins.ae2.accessor.PatternProviderLogicAccessor;
 import cn.dancingsnow.neoecoae.util.InventoryTestBootstrap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.Test;
 
 class ECOProcessingDispatchIntegrationTest {
+    @Test
+    void scaledProcessingRemaindersRemainInTheWaitingLedgerForEveryAcceptedChunk() {
+        var f = new Fixture();
+        f.request.remainders().add(f.key, 1);
+        var progress = new ExecutingCraftingJob.TaskProgress();
+        progress.value = 16;
+        f.request.job().tasks.put(f.request.pattern(), progress);
+        var accounting = new ECOCraftingDispatchAccounting(ignored -> {}, () -> {},
+            current -> new cn.dancingsnow.neoecoae.api.me.lifecycle.ECOCraftingJobContext(
+                mock(appeng.api.networking.crafting.ICraftingCPU.class), current.link.getCraftingID(),
+                current.finalOutput, 16, current.remainingAmount), ignored -> {});
+        var dispatcher = new ECOProcessingPatternDispatcher(null,
+            new ECOCraftingEnergyTransaction(() -> {}, () -> 0), accounting);
+        dispatcher.beginTick(0);
+        var offers = new ArrayList<Long>();
+        var result = dispatcher.tryScaledDispatch(f.request, f.provider, 1, f.energy, ignored -> {},
+            (request, provider) -> { offers.add(request.allowedCrafts()); return true; });
+        assertEquals(List.of(1L, 2L, 4L, 8L, 1L), offers);
+        assertEquals(16, result.acceptedCrafts());
+        assertEquals(16, result.remainders().getFirst().amount());
+        assertEquals(32, f.request.job().waitingFor.list.get(f.key));
+        assertEquals(0, progress.value);
+        assertEquals(84, f.inventory.list.get(f.key));
+    }
+
     @Test
     void directTransportPartialAcceptanceRefundsOnlyUnownedCopiesAndStopsRamp() {
         var f = new Fixture();
@@ -324,6 +354,42 @@ class ECOProcessingDispatchIntegrationTest {
         });
         assertTrue(next.accepted(), "A live single-copy provider can continue during scaled cooldown");
         assertEquals(3, calls[0]);
+    }
+
+    @Test
+    void blockingSwitchDisablesCachedScalingAndKeepsOrdinaryPush() {
+        var f = new Fixture();
+        var outer = f.outerDispatcher();
+        outer.beginTick(0);
+        assertEquals(16, f.outerDispatch(outer, (request, provider) -> true).acceptedCrafts());
+        var config = mock(IConfigManager.class);
+        var advancedBlocking = new Setting<>("advanced_blocking", YesNo.class);
+        when(config.getSettings()).thenReturn(Set.of(advancedBlocking));
+        when(config.getSetting(advancedBlocking)).thenReturn(YesNo.YES);
+        when(f.provider.getConfigManager()).thenReturn(config);
+        assertTrue(cn.dancingsnow.neoecoae.compat.extendedaeplus.ECOExtendedAEPlusBlocking.isEnabled(config));
+        when(f.provider.isBlocking()).thenReturn(true);
+        assertTrue(ECOExternalProviderBlocking.isEnabled(f.provider));
+        assertFalse(ECOProcessingPatternDispatcher.supportsScaledDispatch(f.request, f.provider));
+        assertNull(f.dispatcher.tryScaledDispatch(f.request, f.provider, 1, f.energy, ignored -> {},
+                (request, provider) -> fail("Blocked provider must not receive a scaled push")));
+        var offers = new ArrayList<Long>();
+        var result = f.outerDispatch(outer, (request, provider) -> {
+            offers.add(request.allowedCrafts());
+            return true;
+        });
+        assertEquals(List.of(1L), offers);
+        assertEquals(1, result.acceptedCrafts());
+        assertFalse(result.fastPath());
+        assertEquals(83, f.inventory.list.get(f.key));
+    }
+
+    @Test
+    void advancedAeBlockingDisablesScaledProcessing() {
+        var f = new Fixture();
+        var provider = mock(AdvPatternProviderLogic.class);
+        when(provider.isBlocking()).thenReturn(true);
+        assertFalse(ECOProcessingPatternDispatcher.supportsScaledDispatch(f.request, provider));
     }
 
     @Test

@@ -32,9 +32,9 @@ public final class ActiveRouteSelector {
         boolean budgetExhausted
     ) {
         public Selection {
-            choices = Map.copyOf(choices);
-            cyclicComponents = List.copyOf(cyclicComponents);
-            deferredCyclicCandidates = List.copyOf(deferredCyclicCandidates);
+
+
+
         }
 
         /** Compatibility constructor for callers that do not need budget diagnostics. */
@@ -193,13 +193,15 @@ public final class ActiveRouteSelector {
         // remain in the list so a later change in another member can make their old path disappear; this preserves
         // complete bounded combination search instead of turning the precheck into an unsafe pruning rule.
         hopeful.addAll(definiteCycle);
-        return new CandidateBranches(List.copyOf(hopeful), false);
+        return new CandidateBranches(hopeful, false);
     }
 
     private static Precheck definitelyCyclic(CraftingDependencyGraph active, AEKey member,
             CompiledPattern current, CompiledPattern candidate, RouteWorkBudget budget,
             ECOCancellation cancellation) throws InterruptedException {
-        for (CraftingGraphEdge edge : patternEdges(member, candidate)) {
+        for (CraftingGraphEdge edge : cn.dancingsnow.neoecoae.crafting.planner.graph.PatternDependencyEdges.of(
+                member, candidate, key -> key.equals(member) ? List.of(candidate)
+                    : active.nodes().getOrDefault(key, new CraftingGraphNode(key, List.of())).candidatePatterns())) {
             cancellation.checkpoint();
             if (!budget.consume(1L)) return new Precheck(false, true);
             if (edge.producer().equals(edge.requiredInput())) return new Precheck(true, false);
@@ -271,11 +273,13 @@ public final class ActiveRouteSelector {
     private static List<Integer> choiceVector(CraftingDependencyGraph universe, Map<AEKey, Integer> choices) {
         List<Integer> vector = new ArrayList<>(universe.nodes().size());
         for (AEKey key : universe.nodes().keySet()) vector.add(choices.getOrDefault(key, 0));
-        return List.copyOf(vector);
+        return vector;
     }
 
-    private static List<CraftingGraphEdge> patternEdges(AEKey key, CompiledPattern pattern) {
-        return cn.dancingsnow.neoecoae.crafting.planner.graph.PatternDependencyEdges.of(key, pattern);
+    private static List<CraftingGraphEdge> patternEdges(AEKey key, CompiledPattern pattern,
+            Map<AEKey, CraftingGraphNode> nodes) {
+        return cn.dancingsnow.neoecoae.crafting.planner.graph.PatternDependencyEdges.of(key, pattern,
+            output -> nodes.getOrDefault(output, new CraftingGraphNode(output, List.of())).candidatePatterns());
     }
 
     private static CraftingDependencyGraph activeGraph(CraftingDependencyGraph universe,
@@ -290,7 +294,12 @@ public final class ActiveRouteSelector {
             if (choice >= candidates.size()) choice = candidates.size() - 1;
             List<CompiledPattern> selected = choice >= 0 ? List.of(candidates.get(choice)) : List.of();
             nodes.put(key, new CraftingGraphNode(key, selected));
-            if (choice >= 0) edges.addAll(patternEdges(key, candidates.get(choice)));
+        }
+        for (var node : nodes.values()) {
+            cancellation.checkpoint();
+            for (var pattern : node.candidatePatterns()) {
+                edges.addAll(patternEdges(node.key(), pattern, nodes));
+            }
         }
         for (CraftingGraphEdge edge : edges) {
             nodes.putIfAbsent(edge.producer(), new CraftingGraphNode(edge.producer(), List.of()));

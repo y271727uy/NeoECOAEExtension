@@ -63,7 +63,7 @@ public final class CraftingNetworkCompiler {
     public CompiledNetwork compile(ICraftingService service, AEKey goal, boolean cyclePlanningEnabled,
             Set<ResourceLocation> fuzzyPlanningItemIds, ECOCancellation cancellation) throws InterruptedException {
         Set<ResourceLocation> ignoredItemIds = fuzzyPlanningItemIds == null ? Set.of()
-            : Set.copyOf(fuzzyPlanningItemIds);
+            : fuzzyPlanningItemIds;
         Map<AEKey, List<CompiledPattern>> producers = new LinkedHashMap<>();
         Set<AEKey> emittable = new HashSet<>();
         Set<AEKey> queued = new HashSet<>();
@@ -87,7 +87,7 @@ public final class CraftingNetworkCompiler {
                 PatternDefinition definition = patternDefinition(details);
                 if (definition != null && !definitions.add(definition)) continue;
                 CompiledPattern pattern = compilePattern(nextPatternId++, details, key, cyclePlanningEnabled,
-                    ignoredItemIds, componentInsensitiveOutput);
+                    ignoredItemIds, componentInsensitiveOutput, service);
                 compiled.add(pattern);
                 for (CompiledInput input : pattern.inputs()) {
                     edgeCount++;
@@ -114,7 +114,7 @@ public final class CraftingNetworkCompiler {
                     if (queued.add(feedback.dependentOutput())) work.addLast(feedback.dependentOutput());
                 }
             }
-            producers.put(key, List.copyOf(compiled));
+            producers.put(key, compiled);
         }
         return new CompiledNetwork(goal, producers, emittable, nextPatternId, edgeCount);
     }
@@ -122,20 +122,20 @@ public final class CraftingNetworkCompiler {
     /**
      * Keep AE2's exact producer order first, then add deterministic same-item producers for an explicitly
      * component-insensitive dependency. The selected physical pattern remains unchanged; only its planner-facing
-     * primary output is aliased to the dependency key below.
+     * matching outputs are aliased to the dependency key below.
      */
-    private static List<IPatternDetails> craftingFor(ICraftingService service, AEKey key,
+    private static Iterable<IPatternDetails> craftingFor(ICraftingService service, AEKey key,
             boolean componentInsensitiveOutput) {
         LinkedHashSet<IPatternDetails> result = new LinkedHashSet<>(service.getCraftingFor(key));
         if (!componentInsensitiveOutput || !(key instanceof AEItemKey wanted)) {
-            return List.copyOf(result);
+            return result;
         }
 
         service.getCraftables(candidate -> candidate instanceof AEItemKey itemKey
                 && itemKey.getItem() == wanted.getItem()).stream()
             .sorted(Comparator.comparing(AEKey::toString))
             .forEach(candidate -> result.addAll(service.getCraftingFor(candidate)));
-        return List.copyOf(result);
+        return result;
     }
 
     /** Encoded definitions include quantities, components and matching settings; IO alone is not an identity. */
@@ -155,7 +155,7 @@ public final class CraftingNetworkCompiler {
 
     private CompiledPattern compilePattern(int id, IPatternDetails details, AEKey producedKey,
             boolean cyclePlanningEnabled, Set<ResourceLocation> fuzzyPlanningItemIds,
-            boolean componentInsensitiveOutput) {
+            boolean componentInsensitiveOutput, ICraftingService service) {
         List<CompiledInput> inputs;
         List<GenericStack> outputs;
         PlannerAmount outputPerPattern = PlannerAmount.ZERO;
@@ -181,22 +181,25 @@ public final class CraftingNetworkCompiler {
             if (outputs.isEmpty()) {
                 unsupported = "NO_OUTPUTS";
             }
-            GenericStack primaryOutput = details.getPrimaryOutput();
+            // Compile the view offered by the service, including secondary outputs from extended services.
+            // Matching stacks contribute together to both the firing ratio and the solver's output credit.
+            List<GenericStack> plannerOutputs = new ArrayList<>(outputs.size());
             for (GenericStack output : outputs) {
                 if (output == null || output.what() == null || output.amount() <= 0) {
                     unsupported = "INVALID_OUTPUT";
+                    plannerOutputs.add(output);
+                    continue;
                 }
-            }
-            // AE2 indexes a pattern by getPrimaryOutput(); all remaining entries in getOutputs() are
-            // byproducts and must not change the firing ratio or make a byproduct look craftable on its own.
-            if (primaryOutput != null && primaryOutput.what() != null && primaryOutput.amount() > 0L
-                    && (producedKey.equals(primaryOutput.what())
-                        || componentInsensitiveOutput && sameItem(producedKey, primaryOutput.what()))) {
-                outputPerPattern = PlannerAmount.of(primaryOutput.amount());
-                if (!producedKey.equals(primaryOutput.what())) {
-                    outputs = aliasPrimaryOutput(outputs, primaryOutput.what(), producedKey);
+                if (producedKey.equals(output.what())
+                        || componentInsensitiveOutput && sameItem(producedKey, output.what())) {
+                    outputPerPattern = outputPerPattern.add(PlannerAmount.of(output.amount()));
+                    if (!producedKey.equals(output.what())) {
+                        output = new GenericStack(producedKey, output.amount());
+                    }
                 }
+                plannerOutputs.add(output);
             }
+            outputs = plannerOutputs;
             if (outputPerPattern.signum() <= 0) {
                 unsupported = "PRIMARY_OUTPUT_MISMATCH";
             }
@@ -213,7 +216,7 @@ public final class CraftingNetworkCompiler {
             }
 
             if (!semantics.consumedInputs().isEmpty()) {
-                inputs = compileInputs(semantics, fastClassification, adapter, fuzzyPlanningItemIds);
+                inputs = compileInputs(semantics, fastClassification, adapter, fuzzyPlanningItemIds, service);
             } else {
                 inputs = compileRawInputs(details, fuzzyPlanningItemIds);
             }
@@ -251,16 +254,6 @@ public final class CraftingNetworkCompiler {
         );
     }
 
-    private static List<GenericStack> aliasPrimaryOutput(List<GenericStack> outputs,
-            AEKey physicalPrimaryOutput, AEKey plannerKey) {
-        List<GenericStack> aliased = new ArrayList<>(outputs.size());
-        for (GenericStack output : outputs) {
-            aliased.add(output != null && physicalPrimaryOutput.equals(output.what())
-                ? new GenericStack(plannerKey, output.amount()) : output);
-        }
-        return List.copyOf(aliased);
-    }
-
     private static boolean sameItem(AEKey left, AEKey right) {
         return left instanceof AEItemKey leftItem && right instanceof AEItemKey rightItem
             && leftItem.getItem() == rightItem.getItem();
@@ -285,7 +278,7 @@ public final class CraftingNetworkCompiler {
                 if (possible == null || possible.what() == null || possible.what().equals(input.key())) continue;
                 if (input.source().getRemainingKey(possible.what()) != null) alternatives.add(possible.what());
             }
-            return List.copyOf(alternatives);
+            return alternatives;
         } catch (RuntimeException ignored) {
             return List.of();
         }
@@ -293,7 +286,7 @@ public final class CraftingNetworkCompiler {
 
     private static List<CompiledInput> compileInputs(PatternSemantics semantics,
             ECORecipeClassifier.Classification classification, PatternSemanticAdapter adapter,
-            Set<ResourceLocation> fuzzyPlanningItemIds) {
+            Set<ResourceLocation> fuzzyPlanningItemIds, ICraftingService service) {
         List<CompiledInput> inputs = new ArrayList<>();
         for (PatternSemantics.Input input : semantics.consumedInputs()) {
             String reason = "";
@@ -321,13 +314,16 @@ public final class CraftingNetworkCompiler {
                 fastSupported = false;
                 reason = "INVALID_INPUT_AMOUNT";
             }
+            int inputSlot = indexOfInput(semantics, input);
             boolean ignoresComponents = ignoresComponents(input.key(), fuzzyPlanningItemIds) || input.source() != null
                 && adapter != null
-                && adapter.ignoresComponents(semantics.physicalPattern(), indexOfInput(semantics, input));
-            inputs.add(new CompiledInput(input.source(), input.key(), input.amountPerPattern(), fastSupported, reason,
+                && adapter.ignoresComponents(semantics.physicalPattern(), inputSlot);
+            AEKey preferredKey = input.source() != null && adapter != null
+                ? adapter.preferredInputKey(semantics.physicalPattern(), inputSlot, input.key(), service) : input.key();
+            inputs.add(new CompiledInput(input.source(), preferredKey, input.amountPerPattern(), fastSupported, reason,
                 input.returnedKey(), input.returnedAmountPerPattern(), ignoresComponents));
         }
-        return List.copyOf(inputs);
+        return inputs;
     }
 
     private static int indexOfInput(PatternSemantics semantics, PatternSemantics.Input target) {
@@ -370,7 +366,7 @@ public final class CraftingNetworkCompiler {
 
     private static List<GenericStack> safeOutputs(IPatternDetails details) {
         try {
-            return details.getOutputs() == null ? List.of() : List.copyOf(details.getOutputs());
+            return details.getOutputs() == null ? List.of() : details.getOutputs();
         } catch (RuntimeException ignored) {
             return List.of();
         }

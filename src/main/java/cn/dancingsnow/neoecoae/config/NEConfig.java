@@ -80,6 +80,17 @@ public class NEConfig {
             "This may add event/listener overhead, especially when mods such as Balm are installed.")
         .define("postCraftingEvent", false);
 
+    private static final ModConfigSpec.BooleanValue LARGE_WORKSTATION_COMPAT_RECIPES_ENABLED = BUILDER
+        .comment(
+            "允许大型集成工作站处理受支持模组的联动配方，默认关闭。",
+            "关闭时仅处理本模组的集成工作站配方。",
+            "修改后重新进入世界或重启服务器，以刷新配方浏览器。",
+            "Allow the large integrated workstation to process supported mods' recipes. Disabled by default.",
+            "When disabled, only native integrated workstation recipes are available.",
+            "Reopen the world or restart the server after changing this option to refresh recipe viewers.")
+        .worldRestart()
+        .define("largeWorkstationCompatRecipesEnabled", false);
+
     private static final ModConfigSpec.IntValue CRAFTING_PATTERN_BUS_PAGES = BUILDER
         .comment(
             "一个 ECO 智能样板总线提供的样板页数。",
@@ -91,22 +102,12 @@ public class NEConfig {
     static {
         BUILDER
             .comment(
-                "ECO AE2 快速路径缓存与批量合成选项。",
-                "如果整合包遇到配方兼容问题，可以关闭或调低这些值。",
-                "ECO AE2 fast-path cache and batch crafting options.",
-                "Disable these options or lower their values if a modpack encounters recipe compatibility issues.")
+                "ECO AE2 快速路径缓存与批量合成限制。",
+                "FastPath 默认启用；启用原版合成事件时会回退到逐次合成，以保留事件语义。",
+                "ECO AE2 fast-path cache and batch crafting limits.",
+                "FastPath is enabled by default and falls back to single-craft execution when postCraftingEvent is enabled.")
             .push("fastPath");
     }
-
-    private static final ModConfigSpec.BooleanValue ECO_AE2_FAST_PATH_ENABLED = BUILDER
-        .comment(
-            "启用 ECO AE2 快速路径批量合成缓存。",
-            "可大幅减少重复 pattern 执行开销；如遇到特定整合包配方兼容问题，可关闭此选项回退到慢速路径。",
-            "启用原版合成事件 postCraftingEvent 时，FastPath 会自动禁用以保留事件语义。",
-            "Enable the ECO AE2 fast-path batch crafting cache.",
-            "This greatly reduces repeated pattern execution overhead; disable it to fall back to the slow path if needed.",
-            "FastPath is automatically disabled when postCraftingEvent is enabled to preserve event semantics.")
-        .define("ecoAe2FastPathEnabled", true);
 
     private static final ModConfigSpec.IntValue ECO_CPU_PUSH_TICK_LIMIT = BUILDER
         .comment(
@@ -140,6 +141,11 @@ public class NEConfig {
         .comment("一次 ECO 规划会话的检查点总预算；切换路线和种子不会重置预算。",
             "Shared checkpoint work budget; changing routes or startup seeds does not reset it.")
         .defineInRange("ecoPlanningMaxWork", 5_000_000, 1, Integer.MAX_VALUE);
+
+    private static final ModConfigSpec.IntValue ECO_PLANNING_MAX_MEMORY_MIB = BUILDER
+        .comment("循环求解保留数据的估算内存预算（MiB），覆盖矩阵和搜索状态；超限显示未解。",
+            "Estimated retained memory budget in MiB for cycle matrices and search states; exhaustion remains unknown.")
+        .defineInRange("ecoPlanningMaxMemoryMiB", 64, 1, Integer.MAX_VALUE);
 
     static {
         BUILDER.pop();
@@ -214,12 +220,13 @@ public class NEConfig {
     public static int storageSystemMaxLength;
     public static long megaBulkAutoMarkThreshold = 20_000L;
     public static boolean postCraftingEvent;
+    public static boolean largeWorkstationCompatRecipesEnabled = false;
     public static int craftingPatternBusPages = 1;
-    public static boolean ecoAe2FastPathEnabled = true;
     public static int ecoCpuPushTickLimit = MAX_ECO_CPU_PUSH_TICK_LIMIT;
     public static int ecoFastPathCacheSize = 512;
     public static int ecoPlanningMaxMillis = 10_000;
     public static int ecoPlanningMaxWork = 5_000_000;
+    public static int ecoPlanningMaxMemoryMiB = 64;
     public static boolean ecoPlanningStageDebug = false;
     public static boolean ecoCraftSubmissionDebug = false;
     public static boolean ecoDispatchWatchdogDebug = false;
@@ -241,12 +248,13 @@ public class NEConfig {
         storageSystemMaxLength = STORAGE_SYSTEM_MAX_LENGTH.get();
         megaBulkAutoMarkThreshold = MEGA_BULK_AUTO_MARK_THRESHOLD.get();
         postCraftingEvent = POST_CRAFTING_EVENT.get();
+        largeWorkstationCompatRecipesEnabled = LARGE_WORKSTATION_COMPAT_RECIPES_ENABLED.get();
         craftingPatternBusPages = CRAFTING_PATTERN_BUS_PAGES.get();
-        ecoAe2FastPathEnabled = ECO_AE2_FAST_PATH_ENABLED.get();
         ecoCpuPushTickLimit = Math.clamp(ECO_CPU_PUSH_TICK_LIMIT.get(), 1, MAX_ECO_CPU_PUSH_TICK_LIMIT);
         ecoFastPathCacheSize = ECO_FAST_PATH_CACHE_SIZE.get();
         ecoPlanningMaxMillis = ECO_PLANNING_MAX_MILLIS.get();
         ecoPlanningMaxWork = ECO_PLANNING_MAX_WORK.get();
+        ecoPlanningMaxMemoryMiB = ECO_PLANNING_MAX_MEMORY_MIB.get();
         ecoPlanningStageDebug = ECO_PLANNING_STAGE_DEBUG.get();
         ecoCraftSubmissionDebug = ECO_CRAFT_SUBMISSION_DEBUG.get();
         ecoDispatchWatchdogDebug = ECO_DISPATCH_WATCHDOG_DEBUG.get();

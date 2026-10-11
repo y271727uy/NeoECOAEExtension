@@ -1,7 +1,11 @@
 package cn.dancingsnow.neoecoae.blocks.entity;
 
+import cn.dancingsnow.neoecoae.all.NERecipeTypes;
+import cn.dancingsnow.neoecoae.gui.common.FluidHatchUI;
 import cn.dancingsnow.neoecoae.multiblock.calculator.NEIntegratedWorkingStationClusterCalculator;
 import cn.dancingsnow.neoecoae.multiblock.cluster.NEIntegratedWorkingStationCluster;
+import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
+import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -10,18 +14,16 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidUtil;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.capability.templates.FluidTank;
-import com.lowdragmc.lowdraglib2.gui.factory.BlockUIMenuType;
-import com.lowdragmc.lowdraglib2.gui.ui.ModularUI;
-import cn.dancingsnow.neoecoae.blocks.entity.crafting.CraftingUIHelper;
 
 public class ECOLargeIntegratedWorkingStationInputHatchBlockEntity
     extends NEBlockEntity<NEIntegratedWorkingStationCluster, ECOLargeIntegratedWorkingStationInputHatchBlockEntity> {
     public static final int CAPACITY = 1_024_000;
 
-    public final FluidTank tank = new FluidTank(CAPACITY) {
+    public final FluidTank tank = new FluidTank(CAPACITY, this::isCoolant) {
         @Override
         protected void onContentsChanged() {
             setChanged();
@@ -36,6 +38,14 @@ public class ECOLargeIntegratedWorkingStationInputHatchBlockEntity
         BlockState blockState
     ) {
         super(type, pos, blockState, NEIntegratedWorkingStationClusterCalculator::new);
+    }
+
+    private boolean isCoolant(FluidStack fluid) {
+        if (level == null || fluid.isEmpty()) return false;
+        for (var holder : level.getRecipeManager().getAllRecipesFor(NERecipeTypes.COOLING.get())) {
+            if (holder.value().input().ingredient().test(fluid)) return true;
+        }
+        return false;
     }
 
     private void notifyController() {
@@ -61,7 +71,7 @@ public class ECOLargeIntegratedWorkingStationInputHatchBlockEntity
     }
 
     public ModularUI createUI(BlockUIMenuType.BlockUIHolder holder) {
-        return CraftingUIHelper.createFluidHatchUI(
+        return FluidHatchUI.createFluidHatchUI(
             holder, tank, "block.neoecoae.large_integrated_working_station_input_hatch", true, true);
     }
 

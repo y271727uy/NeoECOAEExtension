@@ -53,9 +53,15 @@ final class ECOCraftingDispatchAccounting {
             job.tasks.get(request.pattern()).accept(batch.craftCount());
             if (job.executionRuntime != null)
                 job.executionRuntime.onAcceptedExact(request.candidate(), batch.craftCount(), request.inputs());
+            if (batch.craftCount().compareTo(java.math.BigInteger.ONE) > 0) {
+                batch.outputs().forEach((key, amount) -> {
+                    if (amount.signum() > 0) job.batchedOutputs.add(key);
+                });
+            }
             beforeNotifications.run();
             dispatchEvent.accept(new ECOCraftingDispatchEvent(contextFactory.apply(job), request.pattern(),
                 batch.craftCount(), provider));
+            cn.dancingsnow.neoecoae.compat.omnisequence.ECOOmniSequenceDirectDispatch.flushAfterCpuAccounting(provider);
             batch.outputs().keySet().forEach(postChange);
             batch.remainders().keySet().forEach(postChange);
             markDirty.run();
@@ -93,10 +99,16 @@ final class ECOCraftingDispatchAccounting {
             if (job.executionRuntime != null) {
                 job.executionRuntime.onAccepted(request.candidate(), result.acceptedCrafts(), request.inputs());
             }
+            if (result.acceptedCrafts() > 1L) {
+                for (var output : result.outputs()) {
+                    if (output.amount() > 0L) job.batchedOutputs.add(output.what());
+                }
+            }
             beforeNotifications.run();
             if (provider != null) {
                 dispatchEvent.accept(new ECOCraftingDispatchEvent(
                         contextFactory.apply(request.job()), request.pattern(), result.acceptedCrafts(), provider));
+                cn.dancingsnow.neoecoae.compat.omnisequence.ECOOmniSequenceDirectDispatch.flushAfterCpuAccounting(provider);
             }
             for (var output : request.pattern().getOutputs()) {
                 postChange.accept(output.what());

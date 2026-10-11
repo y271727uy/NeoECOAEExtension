@@ -207,6 +207,7 @@ final class ECOStorageInfiniteRestore {
                     || !target.identity.equals(ECOInfiniteStorageMember.identity(drive.getCellStack()))
                     || !targetIds.add(target.identity)) {
                 activeRestorePlan = null;
+                host.refreshInfiniteStorageAccess();
                 restoreQueue.clear();
                 host.storageFaults().report("restore", "Restore target changed; waiting for original sealed matrices", host.getLevel().getGameTime());
                 return;
@@ -244,6 +245,7 @@ final class ECOStorageInfiniteRestore {
             restoreQueue.clear();
             for (var entry : pending) restoreQueue.addLast(entry.getKey());
             activeRestorePlan = plan;
+            host.refreshInfiniteStorageAccess();
             IStorageProvider.requestUpdate(host.getMainNode());
         }
         while (!restoreQueue.isEmpty() && engine.getRestoreAmount(restoreQueue.peekFirst()).isZero())
@@ -283,6 +285,7 @@ final class ECOStorageInfiniteRestore {
         }
         if (restoreQueue.isEmpty()) {
             activeRestorePlan = null;
+            host.refreshInfiniteStorageAccess();
             host.exitInfiniteModeIfSafe();
         }
     }
@@ -362,7 +365,7 @@ final class ECOStorageInfiniteRestore {
 
     private record RestorePlan(boolean canRestore, List<RestoreTarget> targets, String reason) {
         private static RestorePlan allowed(List<RestoreTarget> targets) {
-            return new RestorePlan(true, List.copyOf(targets), "");
+            return new RestorePlan(true, targets, "");
         }
 
         private static RestorePlan blocked(String reason) {

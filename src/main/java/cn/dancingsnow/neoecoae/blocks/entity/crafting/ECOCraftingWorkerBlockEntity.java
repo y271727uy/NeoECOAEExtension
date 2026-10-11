@@ -8,7 +8,9 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.storage.MEStorage;
 import appeng.util.SettingsFrom;
 import cn.dancingsnow.neoecoae.all.NEBlocks;
+import cn.dancingsnow.neoecoae.blocks.entity.crafting.ECOCraftingSystemBlockEntity.VirtualLaneStartResult;
 import cn.dancingsnow.neoecoae.crafting.execution.worker.ECOCraftingThread;
+import cn.dancingsnow.neoecoae.crafting.display.CraftingOutputDisplay;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOCraftingFastPathCache;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOExtractedPatternExecution;
 import cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOVerifiedFastPathExecution;
@@ -109,9 +111,9 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
         }
     }
 
-    public static List<ECOCraftingWorkerBlockEntity> getLoadedServerWorkers() {
+    public static Set<ECOCraftingWorkerBlockEntity> getLoadedServerWorkers() {
         synchronized (LOADED_SERVER_WORKERS) {
-            return List.copyOf(LOADED_SERVER_WORKERS);
+            return LOADED_SERVER_WORKERS;
         }
     }
 
@@ -210,7 +212,7 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
 
     public boolean pushBatch(ECOVerifiedFastPathExecution verified) {
         ECOCraftingFastPathCache cache = getFastPathCache();
-        if (!NEConfig.ecoAe2FastPathEnabled || NEConfig.postCraftingEvent) {
+        if (NEConfig.postCraftingEvent) {
             return false;
         }
         if (cluster == null || cluster.getController() == null) {
@@ -231,7 +233,7 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
     public boolean pushExactVirtualBatch(
             cn.dancingsnow.neoecoae.crafting.execution.fastpath.ECOVerifiedFastPathRecipe recipe,
             java.math.BigInteger count, java.util.UUID job) {
-        if (!NEConfig.ecoAe2FastPathEnabled || NEConfig.postCraftingEvent
+        if (NEConfig.postCraftingEvent
                 || cluster == null || cluster.getController() == null || isWorking()) return false;
         var controller = cluster.getController();
         if (!controller.isFullVirtualCraftingMode() || !recipe.isIssuedBy(getFastPathCache())) return false;
@@ -241,7 +243,7 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
 
     public boolean pushVirtualBatch(ECOVerifiedVirtualExecution verified) {
         ECOCraftingFastPathCache cache = getFastPathCache();
-        if (!NEConfig.ecoAe2FastPathEnabled || NEConfig.postCraftingEvent) {
+        if (NEConfig.postCraftingEvent) {
             return false;
         }
         if (cluster == null || cluster.getController() == null || isWorking()) {
@@ -350,6 +352,18 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
         return cluster != null && cluster.getController() == controller;
     }
 
+    public VirtualLaneStartResult getVirtualCraftingBlockedResult(long currentTick) {
+        ECOCraftingSystemBlockEntity controller = cluster == null ? null : cluster.getController();
+        if (controller == null || !controller.isFullVirtualCraftingMode()) return VirtualLaneStartResult.STARTED;
+        VirtualLaneStartResult result = VirtualLaneStartResult.STARTED;
+        for (ECOCraftingThread thread : craftingThreads) {
+            VirtualLaneStartResult blocked = thread.getVirtualCraftingBlockedResult(controller, currentTick);
+            if (blocked == VirtualLaneStartResult.COOLANT_UNAVAILABLE) return blocked;
+            if (blocked == VirtualLaneStartResult.ENERGY_UNAVAILABLE) result = blocked;
+        }
+        return result;
+    }
+
     public List<ECOCraftingThread.Snapshot> getThreadSnapshots() {
         List<ECOCraftingThread.Snapshot> snapshots = new ArrayList<>();
         for (ECOCraftingThread thread : craftingThreads) {
@@ -358,7 +372,7 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
                 snapshots.add(snapshot);
             }
         }
-        return List.copyOf(snapshots);
+        return snapshots;
     }
 
     private int getControllerAvailableThreadSlots(ECOCraftingSystemBlockEntity controller) {
@@ -375,6 +389,24 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
 
     public void markDisplayDirty() {
         displayDirty = true;
+    }
+
+    /** The first current output, for controller panels on both ordinary and monitor FX cores. */
+    public ItemStack getCraftingDisplayItem() {
+        return getCraftingDisplayOutput().item();
+    }
+
+    public CraftingOutputDisplay getCraftingDisplayOutput() {
+        for (ECOCraftingThread thread : craftingThreads) {
+            var key = thread.getDisplayedOutputKey();
+            if (key == null) continue;
+            java.math.BigInteger amount = java.math.BigInteger.ZERO;
+            for (ECOCraftingThread current : craftingThreads) {
+                amount = amount.add(current.getDisplayedItemAmount(key));
+            }
+            if (amount.signum() > 0) return new CraftingOutputDisplay(key.toStack(1), amount);
+        }
+        return CraftingOutputDisplay.EMPTY;
     }
 
     private void refreshDisplayedJob() {
@@ -510,7 +542,7 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
         setChanged();
         markForUpdate();
         wakeTickingDevice();
-        return new ClearResult(busyThreads, Set.copyOf(jobIds));
+        return new ClearResult(busyThreads, jobIds);
     }
 
     public record ClearResult(int threadCount, Set<UUID> jobIds) {}
@@ -569,6 +601,15 @@ public class ECOCraftingWorkerBlockEntity extends cn.dancingsnow.neoecoae.blocks
     /** Number of currently executing batches, distinct from the craft count carried by those batches. */
     public int getRunningBatchCount() {
         return Math.max(0, runningThreads);
+    }
+
+    /** Queue occupancy counts the crafts inside each batch, rather than the number of thread objects. */
+    public long getQueuedCraftCount() {
+        long total = 0L;
+        for (ECOCraftingThread thread : craftingThreads) {
+            total = cn.dancingsnow.neoecoae.crafting.amount.NEMath.saturatingAdd(total, thread.getCraftCount());
+        }
+        return total;
     }
 
     @Override

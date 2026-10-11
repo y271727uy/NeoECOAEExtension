@@ -4,7 +4,7 @@ import cn.dancingsnow.neoecoae.NeoECOAE;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 
-/** Coordinates in our own textures/gui/ae2/states.png atlas. */
+/** Coordinates in our own textures/gui/vendor/ae2/states.png atlas. */
 public enum ECOIcon {
     CLEAR(96, 0),
     HELP(176, 0),
@@ -30,10 +30,6 @@ public enum ECOIcon {
     TAB_BUTTON_BACKGROUND_FOCUS(160, 224, 22, 22),
     SCHEDULING_ROUND_ROBIN(16, 240),
     BACKGROUND_BLANK_PATTERN(240, 128),
-    SUBSTITUTION_ENABLED(224, 208, 8, 8),
-    SUBSTITUTION_DISABLED(232, 208, 8, 8),
-    FLUID_SUBSTITUTION_ENABLED(224, 216, 8, 8),
-    FLUID_SUBSTITUTION_DISABLED(232, 216, 8, 8),
     CYCLE_ENABLED(16, 240),
     CYCLE_DISABLED(32, 240);
 
@@ -41,7 +37,7 @@ public enum ECOIcon {
     public final int y;
     public final int width;
     public final int height;
-    public static final ResourceLocation ATLAS = NeoECOAE.id("textures/gui/ae2/states.png");
+    public static final ResourceLocation ATLAS = NeoECOAE.id("textures/gui/vendor/ae2/states.png");
 
     ECOIcon(int x, int y) {
         this(x, y, 16, 16);

@@ -30,9 +30,10 @@ public record CompiledNetwork(
             fast.put(entry.getKey(), patterns.stream().filter(CompiledPattern::fastSupported).toList());
             multiplePaths |= patterns.size() > 1;
         }
-        producers = Map.copyOf(all);
-        fastProducers = Map.copyOf(fast);
+        producers = java.util.Collections.unmodifiableMap(all);
+        fastProducers = java.util.Collections.unmodifiableMap(fast);
         emittable = Set.copyOf(emittable);
+
     }
 
     public Set<AEKey> keys() { return producers.keySet(); }

@@ -24,7 +24,7 @@ public final class HostSideButtonBar {
     private static final int WIDTH = 23;
     private static final int BUTTON_WIDTH = 16;
     private static final int BUTTON_HEIGHT = 16;
-    private static final int ICON_SIZE = 14;
+    private static final int ICON_SIZE = 16;
     private static final int BUTTON_LEFT = 4;
     private static final int SLOT_SIZE = 18;
     private static final int SLOT_LEFT = 2;
@@ -52,6 +52,10 @@ public final class HostSideButtonBar {
 
     public static UIElement left(List<? extends UIElement> buttons) {
         return create(Side.LEFT, buttons);
+    }
+
+    public static UIElement grayLeft(UIElement... buttons) {
+        return create(Side.LEFT, Arrays.asList(buttons), ContentType.BUTTON, "gray_");
     }
 
     public static UIElement right(UIElement... buttons) {
@@ -83,16 +87,18 @@ public final class HostSideButtonBar {
             layout.top(top);
             layout.width(BUTTON_WIDTH);
             layout.height(BUTTON_HEIGHT);
+            layout.paddingAll(0);
         });
         button.setOverflowVisible(true);
         for (UIElement child : button.getChildren()) {
             if (child != button.text && child.getStyle().backgroundTexture() != null) {
                 child.layout(layout -> layout
                     .positionType(TaffyPosition.ABSOLUTE)
-                    .left(1)
-                    .top(3)
+                    .left(0)
+                    .top(1)
                     .width(ICON_SIZE)
                     .height(ICON_SIZE));
+                child.style(style -> style.zIndex(3));
             }
         }
     }
@@ -102,6 +108,11 @@ public final class HostSideButtonBar {
     }
 
     private static UIElement create(Side side, List<? extends UIElement> elements, ContentType contentType) {
+        return create(side, elements, contentType, "");
+    }
+
+    private static UIElement create(Side side, List<? extends UIElement> elements, ContentType contentType,
+                                    String texturePrefix) {
         if (elements.isEmpty()) {
             throw new IllegalArgumentException("HostSideButtonBar requires at least one element");
         }
@@ -130,7 +141,7 @@ public final class HostSideButtonBar {
             int segmentIndex = index;
             int segmentTop = segmentTop(segmentIndex, contentType);
             int segmentHeight = segmentHeight(segmentIndex, elementCount);
-            IGuiTexture segmentTexture = texture(segmentIndex, elementCount, side, contentType);
+            IGuiTexture segmentTexture = texture(segmentIndex, elementCount, side, contentType, texturePrefix);
             UIElement segment = new UIElement().layout(layout -> {
                 layout.positionType(TaffyPosition.ABSOLUTE);
                 layout.left(0);
@@ -177,13 +188,17 @@ public final class HostSideButtonBar {
     private static final class AE2IconButton extends Button {
         @Override
         public void drawBackgroundAdditional(GUIContext guiContext) {
-            IGuiTexture background = switch (getState()) {
+            ECOIcon background = switch (getState()) {
                 case DEFAULT -> isFocused()
-                    ? AETextures.icon(ECOIcon.TOOLBAR_BUTTON_BACKGROUND_FOCUS)
-                    : AETextures.icon(ECOIcon.TOOLBAR_BUTTON_BACKGROUND);
-                case HOVERED, PRESSED -> AETextures.icon(ECOIcon.TOOLBAR_BUTTON_BACKGROUND_HOVER);
+                    ? ECOIcon.TOOLBAR_BUTTON_BACKGROUND_FOCUS
+                    : ECOIcon.TOOLBAR_BUTTON_BACKGROUND;
+                case HOVERED, PRESSED -> ECOIcon.TOOLBAR_BUTTON_BACKGROUND_HOVER;
             };
-            guiContext.drawTexture(background, getPositionX() - 1, getPositionY(), 18, 20);
+            // Match ECOCraftConfirmScreen.CraftingGraphButton's native atlas rendering.
+            // drawContents applies the shared hover offset to the background and icon.
+            guiContext.graphics.flush();
+            background.blit(guiContext.graphics, Math.round(getPositionX()) - 1,
+                Math.round(getPositionY()), 2);
         }
 
         @Override
@@ -233,7 +248,8 @@ public final class HostSideButtonBar {
         return index == buttonCount - 1 ? BOTTOM_HEIGHT : MIDDLE_HEIGHT;
     }
 
-    private static IGuiTexture texture(int index, int buttonCount, Side side, ContentType contentType) {
+    private static IGuiTexture texture(int index, int buttonCount, Side side, ContentType contentType,
+                                       String texturePrefix) {
         String fileName;
         if (index == 0) {
             fileName = "button_slot_up.png";
@@ -245,6 +261,6 @@ public final class HostSideButtonBar {
         if (side == Side.RIGHT && contentType == ContentType.SLOT) {
             fileName = "mirrored_" + fileName;
         }
-        return SpriteTexture.of(NeoECOAE.id("textures/gui/" + fileName));
+        return SpriteTexture.of(NeoECOAE.id("textures/gui/common/side_bar/" + texturePrefix + fileName));
     }
 }

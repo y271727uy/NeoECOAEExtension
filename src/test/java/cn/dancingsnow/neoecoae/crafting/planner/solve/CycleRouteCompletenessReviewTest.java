@@ -21,6 +21,29 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class CycleRouteCompletenessReviewTest {
+    @Test
+    void defaultRouteSearchCanReachAFeasibleProducerBeyond256Alternatives() throws Exception {
+        var missing = key("missing");
+        var fuel = key("fuel");
+        var finish = pattern(0, goal, Map.of(a, 2L), Map.of(goal, 1L));
+        var producers = new ArrayList<CompiledPattern>();
+        for (int i = 1; i <= 270; i++) producers.add(pattern(i, a,
+            Map.of(a, 1L, missing, 1L), Map.of(a, 2L)));
+        var available = pattern(271, a, Map.of(a, 1L, fuel, 1L), Map.of(a, 2L));
+        producers.add(available);
+        var network = network(Map.of(goal, List.of(finish), a, producers, missing, List.of(), fuel, List.of()));
+        var stock = new KeyCounter(); stock.add(a, 1L); stock.add(fuel, 1L);
+        var graph = graph(network);
+        var planner = new ComponentPlanner(new AcyclicCraftingSolver(), new BoundedCycleSolver());
+        var initial = new ActiveRouteSelector().selectWithChoices(graph.source(), Map.of(a, 0), ECOCancellation.NONE);
+        var result = planner.planWithCycleFallback(network, graph, initial, stock,
+            PlannerInventorySnapshot.of(stock), 1L, false, ECOCancellation.NONE);
+        assertEquals(PlanningStatus.SUCCESS, result.status(), result.trace().diagnostics().toString());
+        assertTrue(result.state().patternTimes.containsKey(available.details()));
+        assertEquals(1L, stock.get(a));
+        assertEquals(1L, stock.get(fuel));
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0, 5, 80})
     void sharedBudgetDuringAlternativesKeepsMaterialsThroughSessionAndClientSnapshot(int extraWork) throws Exception {
@@ -34,7 +57,9 @@ class CycleRouteCompletenessReviewTest {
         var network = network(Map.of(goal, finishes, a, List.of(growth), missing, List.of()));
         var graph = graph(network);
         var initial = new ActiveRouteSelector().selectWithChoices(graph.source(), Map.of(), ECOCancellation.NONE);
-        var stock = new KeyCounter(); stock.add(a, 1L);
+        // Presence alone cannot prune this quantity deficit. Preserve coverage of budget cuts
+        // during real alternatives now that a completely absent leaf is proved unreachable early.
+        var stock = new KeyCounter(); stock.add(a, 1L); stock.add(missing, 1L);
         var work = new java.util.concurrent.atomic.AtomicLong();
         var completed = new ComponentPlanner(new AcyclicCraftingSolver(), new BoundedCycleSolver())
             .plan(network, initial, stock, 1L, true, work::incrementAndGet);
@@ -52,8 +77,8 @@ class CycleRouteCompletenessReviewTest {
         }
         var result = session.plan(1L, false, ECOCancellation.NONE);
         assertEquals(PlanningStatus.CYCLE_UNRESOLVED, result.status(), result.trace().diagnostics().toString());
-        assertEquals(5L, result.plan().missingItems().get(missing));
-        assertEquals(PlannerAmount.of(5L), result.exactMissingItems().get(missing));
+        assertEquals(4L, result.plan().missingItems().get(missing));
+        assertEquals(PlannerAmount.of(4L), result.exactMissingItems().get(missing));
         assertTrue(result.plan().simulation());
         assertTrue(result.plan().bytes() > 0);
         assertFalse(result.cycles().isEmpty());
@@ -63,7 +88,7 @@ class CycleRouteCompletenessReviewTest {
         var snapshot = cn.dancingsnow.neoecoae.crafting.planner.snapshot.CraftingGraphSnapshotFactory.create(result);
         assertFalse(snapshot.cycleGroups().isEmpty());
         assertTrue(snapshot.nodes().stream().anyMatch(n -> n.key().equals(missing)
-            && n.missingBigInteger().equals(java.math.BigInteger.valueOf(5L))));
+            && n.missingBigInteger().equals(java.math.BigInteger.valueOf(4L))));
     }
 
     private final AEKey a = key("A");

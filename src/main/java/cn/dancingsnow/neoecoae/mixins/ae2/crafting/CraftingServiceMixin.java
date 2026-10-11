@@ -58,6 +58,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import cn.dancingsnow.neoecoae.grid.NEMachineLookup;
 
 @Mixin(CraftingService.class)
 public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings, ECOCraftingOutputRouter,
@@ -65,11 +66,16 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     @Unique
     private static final Logger NEOECOAE_SUBMISSION_LOGGER = LoggerFactory.getLogger("neoecoae.submit");
     @Unique
-    private long neoecoae$providerRevision;
+    private volatile long neoecoae$providerRevision;
 
     @Override
     public long neoecoae$getProviderRevision() {
         return neoecoae$providerRevision;
+    }
+
+    @Override
+    public boolean neoecoae$isProviderSnapshotStable() {
+        return !updateList;
     }
 
     @Inject(method = {
@@ -332,10 +338,10 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     public void neoecoae$setIgnoringPatternSubstitutions(boolean ignoringPatternSubstitutions) {
         neoecoae$planningModeInitialized = true;
         neoecoae$ignorePatternSubstitutions = ignoringPatternSubstitutions;
-        for (ECOCraftingSystemBlockEntity host : grid.getMachines(ECOCraftingSystemBlockEntity.class)) {
+        for (ECOCraftingSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOCraftingSystemBlockEntity.class)) {
             host.applyNetworkIgnoringPatternSubstitutions(ignoringPatternSubstitutions);
         }
-        for (ECOComputationSystemBlockEntity host : grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             host.applyNetworkIgnoringPatternSubstitutions(ignoringPatternSubstitutions);
         }
     }
@@ -367,7 +373,7 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     public void neoecoae$setFastPlannerEnabled(boolean enabled) {
         neoecoae$fastPlannerInitialized = true;
         neoecoae$fastPlannerEnabled = enabled;
-        for (ECOComputationSystemBlockEntity host : grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             host.applyNetworkFastCraftingPlannerEnabled(enabled);
         }
     }
@@ -381,15 +387,28 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     public void neoecoae$setCyclePlanningEnabled(boolean enabled) {
         neoecoae$cyclePlanningInitialized = true;
         neoecoae$cyclePlanningEnabled = enabled;
-        for (ECOComputationSystemBlockEntity host : grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             host.applyNetworkCyclePlanningEnabled(enabled);
         }
     }
 
     @Override
     public boolean neoecoae$hasComputationHost() {
-        for (ECOComputationSystemBlockEntity host : grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             if (host.isFormed() && host.getMainNode().isOnline()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean neoecoae$hasComputationHost(IActionSource actionSource) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
+            NEComputationCluster cluster = host.getCluster();
+            if (host.isFormed() && host.getMainNode().isOnline()
+                    && cluster != null && cluster.isActive()
+                    && cluster.canBeAutoSelectedFor(actionSource)) {
                 return true;
             }
         }
@@ -405,7 +424,7 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
                 result.addAll(machineInterface.getFuzzyPlanningItemIds());
             }
         }
-        return Set.copyOf(result);
+        return result;
     }
 
     @Unique
@@ -429,7 +448,7 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     private void onUpdateCPUClusters(CallbackInfo ci) {
         this.neoecoae$computationClusters.clear();
 
-        for (ECOComputationSystemBlockEntity blockEntity : this.grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity blockEntity : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             NEComputationCluster cluster = blockEntity.getCluster();
             if (cluster != null) {
                 this.neoecoae$computationClusters.add(cluster);
@@ -483,7 +502,7 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
         // A newly submitted CPU can finish a virtual batch before CraftingService has run updateCPUClusters.
         // Consult the live grid as a fallback so the output is retained for the right job during that window.
         Set<NEComputationCluster> liveClusters = new HashSet<>();
-        for (ECOComputationSystemBlockEntity host : this.grid.getMachines(ECOComputationSystemBlockEntity.class)) {
+        for (ECOComputationSystemBlockEntity host : NEMachineLookup.getMachines(grid, ECOComputationSystemBlockEntity.class)) {
             if (host.getCluster() != null) {
                 liveClusters.add(host.getCluster());
             }
@@ -767,18 +786,20 @@ public abstract class CraftingServiceMixin implements ECOCraftingNetworkSettings
     @Inject(
             method = "getRequestedAmount",
             at = @At("RETURN"),
+            cancellable = true,
             order = 500
     )
     private void onGetRequestedAmount(
             AEKey what,
-            CallbackInfoReturnable<Long> cir,
-            @Local(name = "requested") LocalLongRef requested
+            CallbackInfoReturnable<Long> cir
     ) {
+        long requested = cir.getReturnValueJ();
         for (var cluster : this.neoecoae$computationClusters) {
             for (var cpu : cluster.getActiveCPUs()) {
-                requested.set(requested.get() + cpu.getLogic().getWaitingFor(what));
+                requested += cpu.getLogic().getWaitingFor(what);
             }
         }
+        cir.setReturnValue(requested);
     }
 
     @Inject(method = "hasCpu", at = @At("HEAD"), cancellable = true)
