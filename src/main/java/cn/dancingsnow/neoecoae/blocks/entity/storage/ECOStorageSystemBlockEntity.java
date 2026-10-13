@@ -1,6 +1,8 @@
 package cn.dancingsnow.neoecoae.blocks.entity.storage;
 
 import appeng.api.stacks.AEKey;
+import appeng.api.orientation.OrientationStrategies;
+import appeng.api.orientation.RelativeSide;
 import appeng.api.stacks.KeyCounter;
 import appeng.api.storage.IStorageMounts;
 import appeng.api.storage.IStorageProvider;
@@ -21,12 +23,10 @@ import cn.dancingsnow.neoecoae.config.NEConfig;
 import cn.dancingsnow.neoecoae.gui.common.ECOModularUI;
 import cn.dancingsnow.neoecoae.gui.storage.StorageHostActionUI;
 import cn.dancingsnow.neoecoae.gui.storage.StorageHostUI;
-import cn.dancingsnow.neoecoae.gui.storage.StorageMegaPanelUI;
 import cn.dancingsnow.neoecoae.gui.storage.StoragePriority;
 import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageEngine;
 import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOInfiniteStorageMember;
 import cn.dancingsnow.neoecoae.impl.storage.infinite.ECOStorageHostMode;
-import cn.dancingsnow.neoecoae.integration.StorageBulkMarkingIntegration;
 import cn.dancingsnow.neoecoae.multiblock.calculator.NEStorageClusterCalculator;
 import cn.dancingsnow.neoecoae.multiblock.cluster.NEStorageCluster;
 import cn.dancingsnow.neoecoae.multiblock.definition.MultiBlockDefinition;
@@ -284,6 +284,8 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
 
         UIElement root = StorageHostUI.create(new StorageHostUI.Config(
                 () -> getItemFromBlockEntity().getDescription(),
+                () -> getTier().getTier(),
+                this::isFormed,
                 statistics::getStoredEnergy,
                 statistics::getMaxEnergy,
                 statistics::getEnergyConsumePerTick,
@@ -295,16 +297,22 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
                 this::canExtractInfiniteComponents,
                 this::getInfiniteDomainText,
                 this::getMissingInfiniteMembers,
-                infiniteComponentItemHandler
-        ));
-        root.addChild(StorageMegaPanelUI.create(
-                this,
-                megaController.upgradeItemHandler(),
-                megaController.filterItemHandler(),
-                actionUI.bulkMarkingButton()
+                infiniteComponentItemHandler,
+                holder.player,
+                (position, expected, shift) -> StorageCellUiExtraction.extract(this, holder.player, position, expected, shift),
+                (position, expected) -> StorageCellUiInsertion.insert(this, holder.player, position, expected),
+                () -> new ItemStack(getBlockState().getBlock())
         ));
         actionUI.addTo(root);
         return ECOModularUI.create(root, holder.player);
+    }
+
+    public List<ECODriveBlockEntity> getStorageUiDrives() {
+        if (!isFormed() || cluster == null) return List.of();
+        var orientation = OrientationStrategies.horizontalFacing();
+        var expansion = orientation.getSide(getBlockState(), mirrored ? RelativeSide.RIGHT : RelativeSide.LEFT);
+        var top = orientation.getSide(getBlockState(), RelativeSide.TOP);
+        return StorageDriveLayout.ordered(cluster.getDrives(), getBlockPos(), expansion, top);
     }
 
     public boolean hasEcoMegaUpgradeCard() {
@@ -448,10 +456,7 @@ public class ECOStorageSystemBlockEntity extends NEBlockEntity<NEStorageCluster,
                 buildController::createLocalPreviewPlan,
                 () -> storagePriority,
                 priority -> setStoragePriority(holder.player, priority),
-                delta -> changeStoragePriority(holder.player, delta),
-                StorageBulkMarkingIntegration::isAvailable,
-                () -> NEConfig.megaBulkAutoMarkThreshold,
-                migrate -> megaController.autoMarkBulkCells(holder.player, migrate)
+                delta -> changeStoragePriority(holder.player, delta)
         ));
     }
 

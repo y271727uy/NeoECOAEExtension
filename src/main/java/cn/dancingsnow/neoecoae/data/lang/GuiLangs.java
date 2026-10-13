@@ -85,6 +85,25 @@ public class GuiLangs {
         provider.add("gui.neoecoae.storage.legacy.graph.energy_stored", "Energy stored: %s");
         provider.add("gui.neoecoae.storage.legacy.graph.total_bytes", "Total bytes: %s");
         provider.add("gui.neoecoae.storage.legacy.graph.total_usage", "Total usage: %s");
+        provider.add("gui.neoecoae.storage.ui.title", "Storage Controller");
+        provider.add("gui.neoecoae.storage.ui.cell_page", "Drives: %s  Page %s/%s");
+        provider.add("gui.neoecoae.storage.ui.scroll_cells", "Scroll to browse storage cells");
+        provider.add("gui.neoecoae.storage.ui.take_cell", "Click to take the cell; Shift-click to move it to your inventory");
+        provider.add("gui.neoecoae.storage.ui.insert_cell", "Click with a storage cell to install it in this drive");
+        provider.add("gui.neoecoae.storage.ui.scroll_types", "Scroll to browse storage types");
+        provider.add("gui.neoecoae.storage.ui.energy", "Energy stored: %s / %s AE");
+        provider.add("gui.neoecoae.storage.ui.resource_distribution", "Resource distribution");
+        provider.add("gui.neoecoae.storage.ui.resource_share", "%s: %s bytes (%s)");
+        provider.add("gui.neoecoae.storage.ui.normal", "Normal storage mode");
+        provider.add("gui.neoecoae.storage.ui.infinite", "Infinite storage mode");
+        provider.add("gui.neoecoae.storage.ui.migrating", "Migrating to infinite storage");
+        provider.add("gui.neoecoae.storage.ui.cell_state.absent", "No storage cell installed");
+        provider.add("gui.neoecoae.storage.ui.cell_state.empty", "Available: empty cell");
+        provider.add("gui.neoecoae.storage.ui.cell_state.not_empty", "Available: contains resources");
+        provider.add("gui.neoecoae.storage.ui.cell_state.types_full", "All type slots used");
+        provider.add("gui.neoecoae.storage.ui.cell_state.full", "Storage capacity full");
+        provider.add("gui.neoecoae.storage.ui.cell_state.offline", "Cell offline or unsupported by this host");
+        provider.add("gui.neoecoae.storage.ui.cell_state.infinite", "Infinite storage member");
         provider.add("gui.neoecoae.multiblock.builder", "Structure Builder");
         provider.add("gui.neoecoae.multiblock.close_builder", "Close builder");
         provider.add("gui.neoecoae.multiblock.decrease_length", "Decrease length");
@@ -340,26 +359,31 @@ public class GuiLangs {
         provider.add("gui.neoecoae.crafting.coolant_max_overclock", "Current Coolant Max Overclock: %d");
         provider.add("gui.neoecoae.host.crafting.overflow", "Overflow");
         provider.add("gui.neoecoae.host.crafting.coolant", "Coolant");
+        provider.add("gui.neoecoae.storage_interface.filter.title", "Resource Filters");
+        provider.add("gui.neoecoae.storage_interface.filter.hint", "Left-click: Set | Right-click: Clear");
+        provider.add("gui.neoecoae.storage_interface.filter.edit", "Left-click with a sample to set; right-click to clear. Fluid containers select the fluid; Shift selects the item.");
+        provider.add("gui.neoecoae.storage_interface.filter.rule", "Input/output: an empty list allows all resources; otherwise only exact matches pass. Storage mode does not use this filter.");
+        provider.add("gui.neoecoae.storage_interface.filter.unavailable", "This saved resource is unavailable. Clear or replace the filter to change it.");
         provider.add("gui.neoecoae.storage_interface.title", "Storage Interface");
         provider.add("gui.neoecoae.storage_interface.mode.storage", "Storage");
         provider.add("gui.neoecoae.storage_interface.mode.input", "Input");
         provider.add("gui.neoecoae.storage_interface.mode.output", "Output");
         provider.add("jade.neoecoae.storage_interface.input", "Storage interface: Input mode");
         provider.add("jade.neoecoae.storage_interface.output", "Storage interface: Output mode");
-        provider.add("gui.neoecoae.storage_interface.structure", "Infinite Storage");
+        provider.add("gui.neoecoae.storage_interface.structure", "Infinite");
         provider.add("gui.neoecoae.storage_interface.infinite_ready", "Ready");
-        provider.add("gui.neoecoae.storage_interface.infinite_unavailable", "Unavailable");
+        provider.add("gui.neoecoae.storage_interface.infinite_unavailable", "Not ready");
         provider.add("gui.neoecoae.storage_interface.network", "Network");
-        provider.add("gui.neoecoae.storage_interface.connected", "Connected");
-        provider.add("gui.neoecoae.storage_interface.disconnected", "Disconnected");
-        provider.add("gui.neoecoae.storage_interface.transfer", "Transferred: %s / tick");
-        provider.add("gui.neoecoae.storage_interface.transfer_prefix", "Transferred: ");
-        provider.add("gui.neoecoae.storage_interface.transfer_suffix", " / tick");
+        provider.add("gui.neoecoae.storage_interface.connected", "Online");
+        provider.add("gui.neoecoae.storage_interface.disconnected", "Offline");
+        provider.add("gui.neoecoae.storage_interface.transfer", "Transfer: %s/tick");
+        provider.add("gui.neoecoae.storage_interface.transfer_prefix", "Transfer: ");
+        provider.add("gui.neoecoae.storage_interface.transfer_suffix", "/tick");
 
         // crafting interface
         provider.add("gui.neoecoae.crafting_interface.title", "Crafting Interface");
         provider.add("gui.neoecoae.crafting_interface.preview.put_pattern",
-            "Click to insert the pattern held by the cursor into an available pattern bus.");
+            "Left-click anywhere in the list to insert into an empty bus slot; right-click a pattern to replace it.");
         provider.add("gui.neoecoae.crafting_interface.preview.search", "Search ingredients or outputs");
         provider.add("gui.neoecoae.crafting_interface.preview.search.tooltip",
             "Searches pattern ingredients and outputs. Separate terms with spaces; right-click to clear.");
