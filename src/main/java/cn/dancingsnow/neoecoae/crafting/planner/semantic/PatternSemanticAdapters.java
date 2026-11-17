@@ -3,7 +3,7 @@ package cn.dancingsnow.neoecoae.crafting.planner.semantic;
 import appeng.api.crafting.IPatternDetails;
 import cn.dancingsnow.neoecoae.compat.extendedaeplus.ExtendedAEPlusPatternSemanticAdapter;
 import cn.dancingsnow.neoecoae.compat.thunderbolt.ThunderPatternSemanticAdapter;
-import cn.dancingsnow.neoecoae.compat.useless.UselessPatternSemanticAdapter;
+// import cn.dancingsnow.neoecoae.compat.useless.UselessPatternSemanticAdapter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,7 +18,7 @@ public final class PatternSemanticAdapters {
                 || classPresent("com.moakiee.thunderbolt.core.crafting.overload.OverloadedPatternDetails")) {
             adapters.add(new ThunderPatternSemanticAdapter());
         }
-        adapters.add(new UselessPatternSemanticAdapter());
+        // adapters.add(new UselessPatternSemanticAdapter());
         adapters.add(new ExtendedAEPlusPatternSemanticAdapter());
         adapters.add(new AE2PatternSemanticAdapter());
         return adapters;

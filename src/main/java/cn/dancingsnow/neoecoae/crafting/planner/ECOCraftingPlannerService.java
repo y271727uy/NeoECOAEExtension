@@ -12,7 +12,7 @@ import cn.dancingsnow.neoecoae.crafting.planner.compile.CraftingNetworkCompiler;
 import cn.dancingsnow.neoecoae.crafting.planner.graph.CondensationGraph;
 import cn.dancingsnow.neoecoae.crafting.planner.graph.CraftingGraphBuilder;
 import cn.dancingsnow.neoecoae.crafting.planner.graph.TarjanSccAnalyzer;
-import cn.dancingsnow.neoecoae.crafting.planner.cycle.BoundedCycleSolver;
+import cn.dancingsnow.neoecoae.crafting.planner.cycle.StoichCycleSolver;
 import cn.dancingsnow.neoecoae.crafting.planner.identity.PlanIdentity;
 import cn.dancingsnow.neoecoae.crafting.planner.result.ComponentPlanningResult;
 import cn.dancingsnow.neoecoae.crafting.planner.result.ECOPlanningResult;
@@ -43,7 +43,7 @@ public final class ECOCraftingPlannerService {
     private final CraftingGraphBuilder graphBuilder = new CraftingGraphBuilder();
     private final TarjanSccAnalyzer sccAnalyzer = new TarjanSccAnalyzer();
     private final ComponentPlanner componentPlanner = new ComponentPlanner(
-            new AcyclicCraftingSolver(), new BoundedCycleSolver());
+            new AcyclicCraftingSolver(), new StoichCycleSolver());
     private final AE2CraftingPlanBridge bridge = new AE2CraftingPlanBridge();
 
     /**

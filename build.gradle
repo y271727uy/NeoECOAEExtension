@@ -125,8 +125,7 @@ dependencies {
     devMods("curse.maven:industrial-foregoing-souls-904394:6235883") { transitive = false }
     devMods("curse.maven:titanium-287342:7951516") { transitive = false }
     devMods("curse.maven:patchouli-306770:7730942") { transitive = false }
-    devMods("curse.maven:jade-324717:8591319") { transitive = false }
-    devMods("mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}") { transitive = false }
+
     testImplementation(platform('org.junit:junit-bom:5.11.4'))
     testImplementation('org.junit.jupiter:junit-jupiter')
     testImplementation('org.mockito:mockito-core:5.15.2')
@@ -135,6 +134,9 @@ dependencies {
     testRuntimeOnly("curse.maven:flux-networks-248020:6089446") { transitive = false }
     api("com.tterrag.registrate:Registrate:MC1.21.1-1.4.8")
     jarJar("com.tterrag.registrate:Registrate:MC1.21.1-1.4.8")
+
+    implementation("dev.stoich:stoich:0.1.0")
+    jarJar("dev.stoich:stoich:0.1.0")
 
     compileOnly("org.appliedenergistics:guideme:21.1.1:api")
     runtimeOnly("org.appliedenergistics:guideme:21.1.1")
@@ -145,7 +147,7 @@ dependencies {
 
     // Optional alloy-furnace scaled dispatch API; not bundled or installed in the dev runtime.
     // Requires 2.3.7.2+ for AlloyFurnaceBigIntegerTarget public API (introduced 2026-09-18)
-    compileOnly("maven.modrinth:a-useless-mod:VX1feqRC") { transitive = false } // 1.21.1-2.3.8
+    //compileOnly("maven.modrinth:a-useless-mod:VX1feqRC") { transitive = false } // 1.21.1-2.3.8
 
     // Optional transfer fast path. Never place this on the default runtime classpath.
 
@@ -213,7 +215,10 @@ dependencies {
         compileOnly("curse.maven:applied-botanics-addon-610632:8298277") { transitive = false }
     }
 
-    implementation("com.hollingsworth.ars_nouveau:ars_nouveau-1.21.1:5.9.4.1182") {
+    // Ars Nouveau is a server-side integration. The dedicated-server runtime keeps it; the client
+    // runtime does not, so runClient starts without loading it.
+    def arsNouveau = "com.hollingsworth.ars_nouveau:ars_nouveau-1.21.1:5.9.4.1182"
+    compileOnly(arsNouveau) {
         // The Ars Nouveau POM pins an older JEI build; use the project-wide client version instead.
         exclude group: "mezz.jei", module: "jei-${minecraft_version}-neoforge"
         // Jade is supplied separately by the client run configuration; do not let Ars Nouveau
@@ -221,9 +226,21 @@ dependencies {
         exclude group: "curse.maven", module: "jade-324717"
         exclude group: "top.theillusivec4.curios", module: "curios-neoforge"
     }
+    runtimeOnly(arsNouveau) {
+        exclude group: "mezz.jei", module: "jei-${minecraft_version}-neoforge"
+        exclude group: "curse.maven", module: "jade-324717"
+        exclude group: "top.theillusivec4.curios", module: "curios-neoforge"
+    }
     implementation("curse.maven:ars-energistique-905641:6203425")
 
     compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}")
+    // These two must be on the runtime classpath. devMods only copies into run/mods, and that
+    // folder was empty, so the client kept Ars Nouveau's JEI 19.21.0.247 and Jade 15.0.5.
+    runtimeOnly("mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}") { transitive = false }
+    runtimeOnly("curse.maven:jade-324717:8591319") { transitive = false }
+    // Curios was only copied into run/mods, which the IDE launch does not use. Ars Nouveau
+    // requires it, so it has to be on the runtime classpath. 9.5.1 is above 1.19-5.0.7.1.
+    runtimeOnly("top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1") { transitive = false }
     compileOnly("dev.emi:emi-neoforge:${emi_version}")
 
     implementation("software.bernie.geckolib:geckolib-neoforge-${minecraft_version}:${geckolib_version}")
@@ -290,6 +307,10 @@ sourceSets.main.java {
     if (!enableAppBotIntegration) {
         exclude 'cn/dancingsnow/neoecoae/integration/appbot/**'
     }
+    // The useless-mod integration is kept on disk but not compiled. Its version was removed from
+    // Modrinth, and the planner should not depend on it.
+    exclude 'cn/dancingsnow/neoecoae/compat/useless/**'
+    exclude 'cn/dancingsnow/neoecoae/mixins/compat/useless/**'
 }
 
 // ModDev supplies Minecraft to main; isolated JVM contract tests need the same game classes.
@@ -305,15 +326,16 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
-// The dev launcher discovers Curios only when its JAR is in run/mods. Keep it
-// off the Java module path to avoid loading the same module twice.
+// Curios itself is on the runtime classpath. This copy is only the extra dev mods.
 def installCuriosDevMod = tasks.register("installCuriosDevMod", Copy) {
-    from(configurations.curiosDevMod, configurations.devMods)
+    from(configurations.devMods)
     into(layout.projectDirectory.dir("run/mods"))
 }
 
 tasks.named("runClient").configure {
     dependsOn(installCuriosDevMod)
+    // Ars Nouveau stays on the server runtime. The client run drops it so it is not loaded there.
+    classpath = classpath.filter { !it.name.startsWith("ars_nouveau") }
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
