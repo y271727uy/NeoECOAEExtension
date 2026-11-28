@@ -5,6 +5,8 @@
   "plugin": "cn.dancingsnow.neoecoae.mixins.ECOMixinLoadConfig",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "mmcr.MachineControllerAccessor",
+    "mmcr.MachineControllerRuntimeAccessor",
     "ae2.accessor.AEBaseMenuAccessor",
     "ae2.accessor.AECraftingPatternAccessor",
     "ae2.accessor.CraftingPlanSummaryAccessor",

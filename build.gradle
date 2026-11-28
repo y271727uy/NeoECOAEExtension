@@ -213,6 +213,9 @@ dependencies {
 
     // OmniSequence 21.3.0.3 registers itself through NeoECOAE's API; only the post-accounting flush is compiled here.
     compileOnly("curse.maven:omnisequence-transfinite-1624558:9737299") { transitive = false }
+    // MMCR 0.2.1 uses hosted inputs and exposes read-only batch sizing.
+    compileOnly("curse.maven:modular-machinery-community-refoxed-1654570:9841969") { transitive = false }
+    devMods("curse.maven:modular-machinery-community-refoxed-1654570:9841969") { transitive = false }
 
     // Pattern-disk API: AE2 Pattern Disk publishes PatternDiskApi for integrations whose machines hold pattern
     // disks. The integration still does not require the mod - the guard in PatternDiskIntegration stands it down
@@ -277,7 +280,8 @@ dependencies {
         devMods("maven.modrinth:applied-botanics:leZwUP1X") { transitive = false }
     }
 
-    implementation("com.hollingsworth.ars_nouveau:ars_nouveau-1.21.1:5.9.4.1182") {
+    // MMCR 0.2.1 requires Ars Nouveau 5.11.5 or later when both mods are installed.
+    implementation("com.hollingsworth.ars_nouveau:ars_nouveau-1.21.1:5.11.5.1336") {
         // The Ars Nouveau POM pins an older JEI build; use the project-wide client version instead.
         exclude group: "mezz.jei", module: "jei-${minecraft_version}-neoforge"
         // Jade is supplied separately by the client run configuration; do not let Ars Nouveau
@@ -285,9 +289,9 @@ dependencies {
         exclude group: "curse.maven", module: "jade-324717"
         exclude group: "top.theillusivec4.curios", module: "curios-neoforge"
         // Its open-ended Nuggets range queries Maven version metadata on every cache expiry.
-        exclude group: "com.hollingsworth.nuggets", module: "nuggets-neoforge-1.21"
+        exclude group: "com.hollingsworth.nuggets", module: "nuggets-neoforge-1.21.1"
     }
-    implementation("com.hollingsworth.nuggets:nuggets-neoforge-1.21:1.0.11.42")
+    implementation("com.hollingsworth.nuggets:nuggets-neoforge-1.21.1:1.1.0.48")
     implementation("curse.maven:ars-energistique-905641:6203425")
 
     compileOnly("mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}")

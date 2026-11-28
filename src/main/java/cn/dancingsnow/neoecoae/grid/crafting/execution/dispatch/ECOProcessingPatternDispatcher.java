@@ -319,11 +319,10 @@ final class ECOProcessingPatternDispatcher {
         if (blocksScaledDispatch(provider, direct)
                 || isScaledAttemptBudgetExhausted(request.pattern()) || isScaledDispatchDeferred(request, provider)
                 || !supportsScaledDispatchCached(request, provider)) return null;
-        Object logic = direct == null ? providerLogic(provider) : null;
-        var mmcr = direct == null ? ECOMmcrPatternDispatch.open(logic, request.pattern()) : null;
+        var mmcr = direct == null ? ECOMmcrPatternDispatch.open(provider, request.pattern()) : null;
+        Object logic = direct == null && mmcr == null ? providerLogic(provider) : null;
         boolean advancedPattern = direct == null && mmcr == null && ECOAdvancedAEPatternScaling.isAdvancedPattern(request.pattern());
-        long transportLimit = mmcr != null ? mmcr.maxBatchSize()
-                : direct == null ? Long.MAX_VALUE : direct.maxBatchSize(request.pattern());
+        long transportLimit = direct == null ? Long.MAX_VALUE : direct.maxBatchSize(request.pattern());
         var overload = ECOOverloadCpuAccountingBridge.prepare(owner, request.pattern(),
                 request.job().link.getCraftingID(),
                 request.job().finalOutput == null ? null : request.job().finalOutput.what(), request.job().waitingFor.list);
@@ -343,18 +342,26 @@ final class ECOProcessingPatternDispatcher {
                 && !blocksScaledDispatch(provider, direct)) {
             claimAttempt(request.pattern());
             visitAttempts++;
-            long availableTransport = mmcr == null ? transportLimit : Math.min(transportLimit, mmcr.availableBatchSize());
+            long remaining = limit - ramp.owned;
             boolean declaredCapacity = mmcr != null || (direct != null
                     ? direct.hasUnboundedInputCapacity(request.pattern(), request.inputs())
                     : ECOUnboundedInputCapacity.forProvider(logic, request.inputs()));
-            long finiteTargetOffer = ramp.offer(limit - ramp.owned);
-            long offer = Math.min(declaredCapacity ? limit - ramp.owned : finiteTargetOffer, availableTransport);
-            var plan = planning.plan(offer, limit - ramp.owned, onePower, service, ECOBatchMode.LINEAR);
-            if (plan == null) {
+            long finiteTargetOffer = ramp.offer(remaining);
+            long capacity = Math.min(declaredCapacity ? remaining : finiteTargetOffer, transportLimit);
+            var fundedPlan = planning.plan(capacity, remaining, onePower, service, ECOBatchMode.LINEAR);
+            if (fundedPlan == null) {
                 ramp.pause(tick);
                 break;
             }
-            offer = plan.craftCount();
+            // MMCR previews which native lane the offered materials can actually fund.
+            long offer = mmcr == null ? fundedPlan.craftCount()
+                    : mmcr.suggestCopies(request.inputs(), fundedPlan.craftCount());
+            if (offer <= 0L) {
+                ramp.pause(tick);
+                break;
+            }
+            var plan = offer == fundedPlan.craftCount() ? fundedPlan
+                    : new ECOBatchPlan(fundedPlan.identity(), offer, fundedPlan.mode(), fundedPlan.limits());
             if (direct == null && mmcr == null && cachedCopies != offer) {
                 cachedExecutionPattern = offer == 1 ? request.pattern()
                         : advancedPattern ? ECOAdvancedAEPatternScaling.scale(request.pattern(), offer)
@@ -400,8 +407,6 @@ final class ECOProcessingPatternDispatcher {
                 overload.registerAccepted(admission.acceptedCrafts());
                 accounting.apply(request, scaledResult(outputsPerCraft, remaindersPerCraft,
                         admission.acceptedCrafts()), () -> {}, provider);
-                if (mmcr != null && owner != null) owner.getProcessingMonitor().observedMmcrDispatch(
-                        request.job().link.getCraftingID(), request.pattern(), mmcr.root(), mmcr.startedTargets());
             } catch (RuntimeException failure) {
                 request.job().failPermanently("POST_ACCEPT_PROCESSING_ACCOUNTING_FAILURE");
                 throw failure;
@@ -463,10 +468,8 @@ final class ECOProcessingPatternDispatcher {
                     && request.pattern().getInputs().length > 0 && !request.pattern().getOutputs().isEmpty()
                     && request.pattern().supportsPushInputsToExternalInventory();
         }
+        if (ECOMmcrPatternDispatch.open(provider, request.pattern()) != null) return true;
         Object providerLogic = providerLogic(provider);
-        var mmcr = ECOMmcrPatternDispatch.open(providerLogic, request.pattern());
-        if (mmcr != null) return mmcr.maxBatchSize() > 0L
-                && request.pattern().getInputs().length > 0 && !request.pattern().getOutputs().isEmpty();
         boolean ae2Logic = providerLogic instanceof PatternProviderLogic
                 && providerLogic instanceof PatternProviderLogicAccessor;
         boolean advancedLogic = ECOAdvancedAEPatternScaling.isProvider(providerLogic);

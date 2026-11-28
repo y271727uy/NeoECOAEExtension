@@ -43,6 +43,11 @@ public final class ECOMixinLoadConfig implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         String mixin = mixinClassName.substring(MIXIN_PACKAGE.length());
+        if (mixin.startsWith("mmcr.")) {
+            var mods = LoadingModList.get();
+            return mods != null && mods.getMods().stream().anyMatch(mod -> mod.getModId().equals("mmcr")
+                && mod.getVersion().toString().equals("0.2.1"));
+        }
         if (AE2_VERSION_CHECKED.contains(mixin)) {
             var mods = LoadingModList.get();
             return mods != null && mods.getMods().stream().anyMatch(mod -> mod.getModId().equals("ae2")

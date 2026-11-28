@@ -62,9 +62,6 @@ public final class ECOProcessingMonitor implements ECOCraftingJobAttachment {
     void dispatched(ECOCraftingDispatchEvent event) {
         try {
             bind(event.job().craftingJobId());
-            // MMCR dispatch records a confirmed controller when possible. Its intermediate port must not
-            // overwrite that narrower observation with every linked controller after accounting fires.
-            if (cn.dancingsnow.neoecoae.integration.mmcr.ECOMmcrPatternDispatch.processingRoot(event.provider()) != null) return;
             var destinations = ECOWorkstationMachineStatus.targets(event.provider());
             for (var output : event.pattern().getOutputs()) {
                 if (output.amount() <= 0) continue;
@@ -98,29 +95,6 @@ public final class ECOProcessingMonitor implements ECOCraftingJobAttachment {
             }
         } catch (RuntimeException | LinkageError incompatible) {
             report(incompatible);
-        }
-    }
-
-    /** A successful native MMCR start resolves the intermediate ME port to its actual controller. */
-    public void observedMmcrDispatch(UUID id, IPatternDetails pattern, Target root, List<Target> controllers) {
-        if (controllers.isEmpty()) return;
-        bind(id);
-        for (var output : pattern.getOutputs()) {
-            if (output.amount() <= 0) continue;
-            var destinations = targets.get(output.what());
-            if (destinations != null && destinations.remove(root)) {
-                var survey = surveys.get(output.what());
-                if (survey != null) {
-                    pending.remove(survey);
-                    survey.queued = false;
-                    survey.scan = null;
-                    survey.published = ECOProcessingProgress.EMPTY;
-                    survey.machineTargets = List.of();
-                    survey.hasCompleteSample = false;
-                    survey.nextTick = Long.MIN_VALUE;
-                }
-            }
-            for (Target controller : controllers) observe(output.what(), controller);
         }
     }
 
